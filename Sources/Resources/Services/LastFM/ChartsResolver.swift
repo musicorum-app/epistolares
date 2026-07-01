@@ -53,6 +53,19 @@ enum ChartsResolver {
         return response
     }
 
+    static func resolveAll(
+        username: String,
+        period: ChartPeriod,
+        limit: Int,
+        db: any Database,
+        lastFM: any LastFMClientProtocol
+    ) async throws -> ChartsAllResponseDTO {
+        async let artists = resolve(type: .artist, username: username, period: period, limit: limit, page: 1, db: db, lastFM: lastFM)
+        async let albums = resolve(type: .album, username: username, period: period, limit: limit, page: 1, db: db, lastFM: lastFM)
+        async let tracks = resolve(type: .track, username: username, period: period, limit: limit, page: 1, db: db, lastFM: lastFM)
+        return try await ChartsAllResponseDTO(period: period, artists: artists, albums: albums, tracks: tracks)
+    }
+
     private static func entryDTO(rank: Int?, artist: String?, playcount: Int?, entity: some ChartResolvable, db: any Database) async throws -> ChartEntryDTO {
         let cover = try await entity.cover(db: db)
         return ChartEntryDTO(

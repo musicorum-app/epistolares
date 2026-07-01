@@ -47,3 +47,10 @@ struct ChartsResponseDTO: Content, Sendable {
     var total: Int
     var items: [ChartEntryDTO]
 }
+
+struct ChartsAllResponseDTO: Content, Sendable {
+    var period: ChartPeriod
+    var artists: ChartsResponseDTO
+    var albums: ChartsResponseDTO
+    var tracks: ChartsResponseDTO
+}

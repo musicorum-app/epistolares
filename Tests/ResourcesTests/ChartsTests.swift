@@ -125,6 +125,38 @@ extension AppTests {
         }
     }
 
+    @Test("getCharts/all resolves top artists, albums, and tracks in one call")
+    func chartsResolvesAll() async throws {
+        try await withTestApp { app in
+            let mock = MockLastFMClient()
+            await mock.setValidUsername("blueslimee")
+            await mock.setTopArtists(.fixture(entries: [("Kelela", 1, 500)], page: 1, totalPages: 1, total: 1), username: "blueslimee", period: "overall", limit: 10, page: 1)
+            await mock.setTopAlbums(.fixture(entries: [("Hallucinogen", "Kelela", 1, 200)], page: 1, totalPages: 1, total: 1), username: "blueslimee", period: "overall", limit: 10, page: 1)
+            await mock.setTopTracks(.fixture(entries: [("All the Way Down", "Kelela", 1, 150)], page: 1, totalPages: 1, total: 1), username: "blueslimee", period: "overall", limit: 10, page: 1)
+            await mock.setArtist(.fixture(name: "Kelela"), forName: "Kelela")
+            await mock.setAlbum(.fixture(name: "Hallucinogen", artist: "Kelela"), forArtist: "Kelela", name: "Hallucinogen")
+            await mock.setTrack(.fixture(name: "All the Way Down"), forArtist: "Kelela", name: "All the Way Down")
+
+            let response = try await ChartsResolver.resolveAll(username: "blueslimee", period: .overall, limit: 10, db: app.db, lastFM: mock)
+
+            #expect(response.artists.items.map(\.name) == ["Kelela"])
+            #expect(response.albums.items.map(\.name) == ["Hallucinogen"])
+            #expect(response.tracks.items.map(\.name) == ["All the Way Down"])
+        }
+    }
+
+    @Test("GET /user/charts/all rejects an invalid username")
+    func chartsAllRejectsInvalidUsername() async throws {
+        try await withTestApp { app in
+            let mock = MockLastFMClient()
+            app.lastFM = mock
+
+            try await app.testing().test(.GET, "user/charts/all?username=nobody", afterResponse: { res async in
+                #expect(res.status == .badRequest)
+            })
+        }
+    }
+
     @Test("GET /user/charts rejects an invalid username")
     func chartsRejectsInvalidUsername() async throws {
         try await withTestApp { app in
