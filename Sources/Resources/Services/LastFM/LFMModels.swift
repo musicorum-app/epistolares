@@ -220,3 +220,126 @@ struct LFMTrack: Decodable {
     let album: Album?
     let toptags: LFMTagsWrapper?
 }
+
+// MARK: - user.gettop{artists,albums,tracks}
+
+struct LFMChartAttr: Decodable {
+    let page: LFMIntString
+    let totalPages: LFMIntString
+    let total: LFMIntString
+}
+
+struct LFMChartArtistRef: Decodable {
+    let name: String
+    let mbid: String?
+    let url: String
+}
+
+struct LFMChartRankAttr: Decodable {
+    let rank: LFMIntString?
+}
+
+struct LFMTopArtistsResponse: Decodable {
+    let topartists: LFMTopArtists
+}
+
+struct LFMTopArtists: Decodable {
+    struct Entry: Decodable {
+        let name: String
+        let mbid: String?
+        let url: String
+        let image: [LFMImage]?
+        let playcount: LFMIntString?
+        let attr: LFMChartRankAttr?
+
+        enum CodingKeys: String, CodingKey {
+            case name, mbid, url, image, playcount
+            case attr = "@attr"
+        }
+    }
+
+    let artist: [Entry]?
+    let attr: LFMChartAttr
+
+    enum CodingKeys: String, CodingKey {
+        case artist
+        case attr = "@attr"
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        artist = try container.decodeLFMList(forKey: .artist)
+        attr = try container.decode(LFMChartAttr.self, forKey: .attr)
+    }
+}
+
+struct LFMTopAlbumsResponse: Decodable {
+    let topalbums: LFMTopAlbums
+}
+
+struct LFMTopAlbums: Decodable {
+    struct Entry: Decodable {
+        let name: String
+        let mbid: String?
+        let url: String
+        let image: [LFMImage]?
+        let playcount: LFMIntString?
+        let artist: LFMChartArtistRef
+        let attr: LFMChartRankAttr?
+
+        enum CodingKeys: String, CodingKey {
+            case name, mbid, url, image, playcount, artist
+            case attr = "@attr"
+        }
+    }
+
+    let album: [Entry]?
+    let attr: LFMChartAttr
+
+    enum CodingKeys: String, CodingKey {
+        case album
+        case attr = "@attr"
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        album = try container.decodeLFMList(forKey: .album)
+        attr = try container.decode(LFMChartAttr.self, forKey: .attr)
+    }
+}
+
+struct LFMTopTracksResponse: Decodable {
+    let toptracks: LFMTopTracks
+}
+
+struct LFMTopTracks: Decodable {
+    struct Entry: Decodable {
+        let name: String
+        let mbid: String?
+        let url: String
+        let image: [LFMImage]?
+        let duration: LFMIntString?
+        let playcount: LFMIntString?
+        let artist: LFMChartArtistRef
+        let attr: LFMChartRankAttr?
+
+        enum CodingKeys: String, CodingKey {
+            case name, mbid, url, image, duration, playcount, artist
+            case attr = "@attr"
+        }
+    }
+
+    let track: [Entry]?
+    let attr: LFMChartAttr
+
+    enum CodingKeys: String, CodingKey {
+        case track
+        case attr = "@attr"
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        track = try container.decodeLFMList(forKey: .track)
+        attr = try container.decode(LFMChartAttr.self, forKey: .attr)
+    }
+}

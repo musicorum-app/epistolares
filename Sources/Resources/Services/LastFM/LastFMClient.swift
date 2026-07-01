@@ -8,6 +8,9 @@ protocol LastFMClientProtocol: Sendable {
     func trackInfo(name: String, artist: String, username: String?) async throws -> LFMTrack
     /// Throws `LastFMError.notFound` if username is invalid
     func validateUsername(_ username: String) async throws
+    func topArtists(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopArtists
+    func topAlbums(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopAlbums
+    func topTracks(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopTracks
 }
 
 struct LastFMClient: LastFMClientProtocol, Sendable {
@@ -56,6 +59,22 @@ struct LastFMClient: LastFMClientProtocol, Sendable {
 
     func validateUsername(_ username: String) async throws {
         _ = try await call(method: "user.getInfo", params: ["user": username], as: LFMUserInfoResponse.self)
+    }
+
+    private func chartParams(username: String, period: String, limit: Int, page: Int) -> [String: String] {
+        ["user": username, "period": period, "limit": "\(limit)", "page": "\(page)"]
+    }
+
+    func topArtists(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopArtists {
+        try await call(method: "user.gettopartists", params: chartParams(username: username, period: period, limit: limit, page: page), as: LFMTopArtistsResponse.self).topartists
+    }
+
+    func topAlbums(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopAlbums {
+        try await call(method: "user.gettopalbums", params: chartParams(username: username, period: period, limit: limit, page: page), as: LFMTopAlbumsResponse.self).topalbums
+    }
+
+    func topTracks(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopTracks {
+        try await call(method: "user.gettoptracks", params: chartParams(username: username, period: period, limit: limit, page: page), as: LFMTopTracksResponse.self).toptracks
     }
 }
 
