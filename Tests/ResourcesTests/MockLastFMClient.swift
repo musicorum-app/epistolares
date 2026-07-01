@@ -6,6 +6,9 @@ actor MockLastFMClient: LastFMClientProtocol {
     private var albums: [String: LFMAlbum] = [:]
     private var tracks: [String: LFMTrack] = [:]
     private var validUsernames: Set<String> = []
+    private var topArtistsCharts: [String: LFMTopArtists] = [:]
+    private var topAlbumsCharts: [String: LFMTopAlbums] = [:]
+    private var topTracksCharts: [String: LFMTopTracks] = [:]
 
     private(set) var calls: [String] = []
 
@@ -23,6 +26,18 @@ actor MockLastFMClient: LastFMClientProtocol {
 
     func setValidUsername(_ username: String) {
         validUsernames.insert(username.lowercased())
+    }
+
+    func setTopArtists(_ chart: LFMTopArtists, username: String, period: String, limit: Int, page: Int) {
+        topArtistsCharts["\(username.lowercased())|\(period)|\(limit)|\(page)"] = chart
+    }
+
+    func setTopAlbums(_ chart: LFMTopAlbums, username: String, period: String, limit: Int, page: Int) {
+        topAlbumsCharts["\(username.lowercased())|\(period)|\(limit)|\(page)"] = chart
+    }
+
+    func setTopTracks(_ chart: LFMTopTracks, username: String, period: String, limit: Int, page: Int) {
+        topTracksCharts["\(username.lowercased())|\(period)|\(limit)|\(page)"] = chart
     }
 
     func artistInfo(name: String, username: String?) async throws -> LFMArtist {
@@ -46,6 +61,24 @@ actor MockLastFMClient: LastFMClientProtocol {
     func validateUsername(_ username: String) async throws {
         calls.append("validateUsername(\(username))")
         guard validUsernames.contains(username.lowercased()) else { throw LastFMError.notFound }
+    }
+
+    func topArtists(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopArtists {
+        calls.append("topArtists(\(username), period: \(period), limit: \(limit), page: \(page))")
+        guard let chart = topArtistsCharts["\(username.lowercased())|\(period)|\(limit)|\(page)"] else { throw LastFMError.notFound }
+        return chart
+    }
+
+    func topAlbums(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopAlbums {
+        calls.append("topAlbums(\(username), period: \(period), limit: \(limit), page: \(page))")
+        guard let chart = topAlbumsCharts["\(username.lowercased())|\(period)|\(limit)|\(page)"] else { throw LastFMError.notFound }
+        return chart
+    }
+
+    func topTracks(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopTracks {
+        calls.append("topTracks(\(username), period: \(period), limit: \(limit), page: \(page))")
+        guard let chart = topTracksCharts["\(username.lowercased())|\(period)|\(limit)|\(page)"] else { throw LastFMError.notFound }
+        return chart
     }
 }
 
@@ -159,6 +192,52 @@ extension LFMTrack {
             "artist": ["name": "Artist", "mbid": NSNull(), "url": NSNull()],
             "album": album,
             "toptags": ["tag": tagsJSON(tags)],
+        ])
+    }
+}
+
+private func chartAttrJSON(page: Int, totalPages: Int, total: Int) -> [String: Any] {
+    ["page": "\(page)", "totalPages": "\(totalPages)", "total": "\(total)"]
+}
+
+extension LFMTopArtists {
+    static func fixture(
+        entries: [(name: String, rank: Int, playcount: Int)],
+        page: Int = 1,
+        totalPages: Int = 1,
+        total: Int? = nil
+    ) -> LFMTopArtists {
+        decode(LFMTopArtists.self, object: [
+            "artist": entries.map { ["name": $0.name, "url": "https://www.last.fm/music/\($0.name)", "playcount": "\($0.playcount)", "@attr": ["rank": "\($0.rank)"]] },
+            "@attr": chartAttrJSON(page: page, totalPages: totalPages, total: total ?? entries.count),
+        ])
+    }
+}
+
+extension LFMTopAlbums {
+    static func fixture(
+        entries: [(name: String, artist: String, rank: Int, playcount: Int)],
+        page: Int = 1,
+        totalPages: Int = 1,
+        total: Int? = nil
+    ) -> LFMTopAlbums {
+        decode(LFMTopAlbums.self, object: [
+            "album": entries.map { ["name": $0.name, "url": "https://www.last.fm/music/\($0.artist)/\($0.name)", "playcount": "\($0.playcount)", "artist": ["name": $0.artist, "url": "https://www.last.fm/music/\($0.artist)"], "@attr": ["rank": "\($0.rank)"]] },
+            "@attr": chartAttrJSON(page: page, totalPages: totalPages, total: total ?? entries.count),
+        ])
+    }
+}
+
+extension LFMTopTracks {
+    static func fixture(
+        entries: [(name: String, artist: String, rank: Int, playcount: Int)],
+        page: Int = 1,
+        totalPages: Int = 1,
+        total: Int? = nil
+    ) -> LFMTopTracks {
+        decode(LFMTopTracks.self, object: [
+            "track": entries.map { ["name": $0.name, "url": "https://www.last.fm/music/\($0.artist)/_/\($0.name)", "playcount": "\($0.playcount)", "artist": ["name": $0.artist, "url": "https://www.last.fm/music/\($0.artist)"], "@attr": ["rank": "\($0.rank)"]] },
+            "@attr": chartAttrJSON(page: page, totalPages: totalPages, total: total ?? entries.count),
         ])
     }
 }
