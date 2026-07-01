@@ -101,6 +101,17 @@ enum LastFMSync {
 
     // MARK: - Shared helpers
 
+    private static func createOrFetchExisting<Model: FluentKit.Model>(_ model: Model, db: any Database, fetchExisting: () async throws -> Model?) async throws -> Model {
+        do {
+            try await model.save(on: db)
+            return model
+        } catch {
+            guard let dbError = error as? any DatabaseError, dbError.isConstraintFailure,
+                  let existing = try await fetchExisting() else { throw error }
+            return existing
+        }
+    }
+
     private static func findOrCreateCover(externalID: String, db: any Database) async throws -> Cover {
         if let existing = try await Cover.query(on: db)
             .filter(\.$source == .lastfm)
@@ -109,8 +120,9 @@ enum LastFMSync {
             return existing
         }
         let cover = Cover(source: .lastfm, externalID: externalID)
-        try await cover.save(on: db)
-        return cover
+        return try await createOrFetchExisting(cover, db: db) {
+            try await Cover.query(on: db).filter(\.$source == .lastfm).filter(\.$externalID == externalID).first()
+        }
     }
 
     static func coverExternalID(from images: [LFMImage]?) -> String? {
@@ -133,8 +145,9 @@ enum LastFMSync {
             return existing
         }
         let tag = Tag(name: name, url: url)
-        try await tag.save(on: db)
-        return tag
+        return try await createOrFetchExisting(tag, db: db) {
+            try await Tag.query(on: db).filter(\.$name == name).first()
+        }
     }
 
     /// Attaches any tags that aren't already attached.
@@ -205,7 +218,7 @@ enum LastFMSync {
         let cover = try await findOrCreateCover(externalID: coverExternalID(from: info.image) ?? "", db: db)
         let coverID = try cover.requireID()
 
-        let artist = existing ?? Artist(name: info.name, url: info.url, externalID: cover.externalID, listeners: 0, scrobbles: 0, coverID: coverID)
+        var artist = existing ?? Artist(name: info.name, url: info.url, externalID: cover.externalID, listeners: 0, scrobbles: 0, coverID: coverID)
         var diff = FieldDiff(artist, isNew: existing == nil)
 
         diff.set(\.name, info.name)
@@ -223,7 +236,13 @@ enum LastFMSync {
         if let listeners = info.stats?.listeners?.value { diff.set(\.listeners, listeners) }
         if let scrobbleCount = info.stats?.playcount?.value { diff.set(\.scrobbles, scrobbleCount) }
 
-        if diff.changed { try await artist.save(on: db) }
+        if diff.changed {
+            if existing == nil {
+                artist = try await createOrFetchExisting(artist, db: db) { try await findArtistByNameOrAlias(info.name, db: db) }
+            } else {
+                try await artist.save(on: db)
+            }
+        }
         try await syncTags(
             info.tags?.tag,
             current: { try await artist.$tags.get(on: db) },
@@ -281,7 +300,7 @@ enum LastFMSync {
         let cover = try await findOrCreateCover(externalID: coverExternalID(from: info.image) ?? "", db: db)
         let coverID = try cover.requireID()
 
-        let album = existing ?? Album(name: info.name, url: info.url, listeners: 0, scrobbles: 0, artistID: artistID, coverID: coverID)
+        var album = existing ?? Album(name: info.name, url: info.url, listeners: 0, scrobbles: 0, artistID: artistID, coverID: coverID)
         var diff = FieldDiff(album, isNew: existing == nil)
 
         diff.set(\.name, info.name)
@@ -294,7 +313,15 @@ enum LastFMSync {
         if let listeners = info.listeners?.value { diff.set(\.listeners, listeners) }
         if let scrobbleCount = info.playcount?.value { diff.set(\.scrobbles, scrobbleCount) }
 
-        if diff.changed { try await album.save(on: db) }
+        if diff.changed {
+            if existing == nil {
+                album = try await createOrFetchExisting(album, db: db) {
+                    try await Album.query(on: db).filter(\.$name == info.name).filter(\.$artist.$id == artistID).first()
+                }
+            } else {
+                try await album.save(on: db)
+            }
+        }
         try await syncTags(
             info.tags?.tag,
             current: { try await album.$tags.get(on: db) },
