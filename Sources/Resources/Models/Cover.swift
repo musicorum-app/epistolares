@@ -48,7 +48,8 @@ final class Cover: Model, @unchecked Sendable {
         self.externalID = externalID
     }
 
-    func toCoverURL(dimensions: Dimensions) -> URL {
+    func toCoverURL(dimensions: Dimensions) -> URL? {
+        guard !externalID.isEmpty else { return nil }
         switch self.source {
         case .lastfm:
             return URL(string: "https://lastfm.freetls.fastly.net/i/u/\(dimensions.width)x\(dimensions.height)/\(self.externalID).jpg")!

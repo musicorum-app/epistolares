@@ -17,7 +17,7 @@ struct ArtistBioDTO: Content {
 struct SimilarArtistDTO: Content {
     var id: UUID
     var name: String
-    var coverURL: String
+    var coverURL: String?
 }
 
 struct ArtistInfoResponseDTO: Content {
@@ -28,7 +28,7 @@ struct ArtistInfoResponseDTO: Content {
     var url: String
     var listeners: Int
     var scrobbles: Int
-    var coverURL: String
+    var coverURL: String?
     var tags: [String]
     var bio: ArtistBioDTO
     var similarArtists: [SimilarArtistDTO]
@@ -47,7 +47,7 @@ extension LastFMSync.SyncedArtist {
             similarDTOs.append(SimilarArtistDTO(
                 id: try similarArtist.requireID(),
                 name: similarArtist.name,
-                coverURL: similarCover.toCoverURL(dimensions: .large).absoluteString
+                coverURL: similarCover.toCoverURL(dimensions: .large)?.absoluteString
             ))
         }
 
@@ -59,7 +59,7 @@ extension LastFMSync.SyncedArtist {
             url: artist.url,
             listeners: artist.listeners,
             scrobbles: artist.scrobbles,
-            coverURL: cover.toCoverURL(dimensions: .large).absoluteString,
+            coverURL: cover.toCoverURL(dimensions: .large)?.absoluteString,
             tags: tags.map { $0.name },
             bio: ArtistBioDTO(summary: artist.summary, content: artist.biography, license: artist.biographyLicense),
             similarArtists: similarDTOs,
