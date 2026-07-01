@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:resources2}",
+            "name": "Debug Resources",
+            "target": "Resources",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Resources"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:resources2}",
+            "name": "Release Resources",
+            "target": "Resources",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Resources"
+        }
+    ]
+}
