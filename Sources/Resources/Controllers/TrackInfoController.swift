@@ -12,10 +12,12 @@ struct TrackInfoController: RouteCollection {
     func info(req: Request) async throws -> TrackInfoResponseDTO {
         let query = try req.query.decode(TrackInfoQuery.self)
 
-        do {
-            try await req.application.lastFM.validateUsername(query.username)
-        } catch LastFMError.notFound {
-            throw Abort(.badRequest, reason: "Invalid Last.fm username")
+        if let username = query.username {
+            do {
+                try await req.application.lastFM.validateUsername(username)
+            } catch LastFMError.notFound {
+                throw Abort(.badRequest, reason: "Invalid Last.fm username")
+            }
         }
 
         do {

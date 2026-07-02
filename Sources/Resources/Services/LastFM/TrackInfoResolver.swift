@@ -14,7 +14,7 @@ enum TrackInfoResolver {
         track: String,
         album: String?,
         artist: String,
-        username: String,
+        username: String?,
         db: any Database,
         lastFM: any LastFMClientProtocol
     ) async throws -> TrackInfoResult {
