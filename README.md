@@ -1,6 +1,6 @@
-# resources2
+# epistolares
 
-A Vapor server that sits in front of the Last.fm API and gives you clean JSON responses, consistent types, and [no surprises](https://www.youtube.com/watch?v=u5CVsCnxyXg). Get track and artist covers, similar artists, charts, and more. Also supports the Apple App Attestation API so you can use resources2 in your apps while ensuring the request is coming from a legitimate source.
+A Vapor server that sits in front of the Last.fm API and gives you clean JSON responses, consistent types, and [no surprises](https://www.youtube.com/watch?v=u5CVsCnxyXg). Get track and artist covers, similar artists, charts, and more. Also supports the Apple App Attestation API so you can use epistolares in your apps while ensuring the request is coming from a legitimate source.
 
 ## Why
 
@@ -13,7 +13,7 @@ If you have used the Last.fm API before, you know why. Here is a non-exhaustive 
 - **Bios come with a tracking link and license boilerplate baked into the text:** they are not separated out.
 - **One track, multiple albums:** `track.getInfo` only ever returns one album association, often a generic "Greatest Hits"-style compilation instead of the release you actually care about.
 
-resources2 handles all of it once.
+epistolares handles all of it once.
 
 ## What you get
 
@@ -113,12 +113,12 @@ Endpoints return `400` for a missing/invalid username and `404` when the artist/
 
 ### Using Docker
 
-The image is available at `ghcr.io/musicorum-app/resources2`. The recommended way to run it is with Docker Compose. Here's an example:
+The image is available at `ghcr.io/musicorum-app/epistolares`. The recommended way to run it is with Docker Compose. Here's an example:
 ```yaml
 version: "3.9"
 services:
-  resources2:
-    image: ghcr.io/musicorum-app/resources2:latest
+  epistolares:
+    image: ghcr.io/musicorum-app/epistolares:latest
     env_file:
       - .env
     ports:
@@ -131,7 +131,7 @@ services:
     environment:
       - POSTGRES_PASSWORD=your-db-password
       - POSTGRES_USER=your-db-username
-      - POSTGRES_DB=resources2
+      - POSTGRES_DB=epistolares
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
