@@ -2,7 +2,7 @@ import Vapor
 
 struct RequestTimingMiddleware: AsyncMiddleware {
     func respond(to request: Request, chainingTo next: any AsyncResponder) async throws -> Response {
-        let start = DispatchTime.now()
+        let start = ContinuousClock.now
         let response = try await next.respond(to: request)
 
         request.logger.info(

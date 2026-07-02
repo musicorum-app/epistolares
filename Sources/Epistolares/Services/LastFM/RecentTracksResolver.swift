@@ -11,7 +11,7 @@ enum RecentTracksResolver {
         lastFM: any LastFMClientProtocol,
         logger: Logger
     ) async throws -> RecentTracksResponseDTO {
-        let overallStart = DispatchTime.now()
+        let overallStart = ContinuousClock.now
         let recent = try await lastFM.recentTracks(username: username, limit: limit, page: page)
 
         let items = try await mapConcurrently(recent.track ?? []) { entry in

@@ -27,7 +27,7 @@ struct LastFMClient: LastFMClientProtocol, Sendable {
         query["api_key"] = apiKey
         query["format"] = "json"
 
-        let start = DispatchTime.now()
+        let start = ContinuousClock.now
         defer {
             Self.logger.debug("Last.fm \(method)", metadata: ["ms": .stringConvertible(start.elapsedMs)])
         }

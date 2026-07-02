@@ -22,7 +22,7 @@ enum ChartsResolver {
         }
         logger.debug("charts cache miss", metadata: ["key": .string(cacheKey)])
 
-        let overallStart = DispatchTime.now()
+        let overallStart = ContinuousClock.now
         var items: [ChartEntryDTO]
         let attr: LFMChartAttr
         switch type {
