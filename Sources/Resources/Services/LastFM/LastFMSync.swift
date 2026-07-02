@@ -164,6 +164,15 @@ enum LastFMSync {
         }
     }
 
+    private static func attachIgnoringDuplicate(_ attach: () async throws -> Void) async throws {
+        do {
+            try await attach()
+        } catch {
+            guard let dbError = error as? any DatabaseError, dbError.isConstraintFailure else { throw error }
+            logger.debug("attachIgnoringDuplicate: a concurrent sync already attached this pair")
+        }
+    }
+
     private static func findOrCreateCover(externalID: String, db: any Database) async throws -> Cover {
         if let existing = try await Cover.query(on: db)
             .filter(\.$source == .lastfm)
@@ -234,7 +243,7 @@ enum LastFMSync {
         let currentNames = Set(try await current().map { $0.name.lowercased() })
         for tagInfo in tags where !currentNames.contains(tagInfo.name.lowercased()) {
             let tag = try await findOrCreateTag(name: tagInfo.name, url: tagInfo.url, db: db)
-            try await attach(tag)
+            try await attachIgnoringDuplicate { try await attach(tag) }
         }
     }
 
@@ -259,7 +268,7 @@ enum LastFMSync {
             let other = synced.artist
             if try other.requireID() != artistID {
                 logger.debug("attaching newly-discovered similar artist", metadata: ["artist": .string(artist.name), "similar": .string(other.name)])
-                try await artist.$similarArtists.attach(other, on: db)
+                try await attachIgnoringDuplicate { try await artist.$similarArtists.attach(other, on: db) }
             }
         }
     }

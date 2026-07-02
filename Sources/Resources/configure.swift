@@ -12,13 +12,16 @@ func configure(_ app: Application) async throws {
 
     let databaseName = Environment.get("DATABASE_NAME") ?? "vapor_database"
     
-    app.databases.use(DatabaseConfigurationFactory.postgres(configuration: .init(
-        hostname: Environment.get("DATABASE_HOST") ?? "localhost",
-        port: Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? SQLPostgresConfiguration.ianaPortNumber,
-        username: Environment.get("DATABASE_USERNAME") ?? "vapor_username",
-        password: Environment.get("DATABASE_PASSWORD") ?? "vapor_password",
-        database: databaseName,
-        tls: .prefer(try .init(configuration: .clientDefault)))
+    app.databases.use(DatabaseConfigurationFactory.postgres(
+        configuration: .init(
+            hostname: Environment.get("DATABASE_HOST") ?? "localhost",
+            port: Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? SQLPostgresConfiguration.ianaPortNumber,
+            username: Environment.get("DATABASE_USERNAME") ?? "vapor_username",
+            password: Environment.get("DATABASE_PASSWORD") ?? "vapor_password",
+            database: databaseName,
+            tls: .prefer(try .init(configuration: .clientDefault))
+        ),
+        maxConnectionsPerEventLoop: 8
     ), as: .psql)
 
     let apiKey = Environment.get("LASTFM_API_KEY") ?? ""

@@ -14,8 +14,7 @@ enum RecentTracksResolver {
         let overallStart = DispatchTime.now()
         let recent = try await lastFM.recentTracks(username: username, limit: limit, page: page)
 
-        var items: [RecentTrackDTO] = []
-        for entry in recent.track ?? [] {
+        let items = try await mapConcurrently(recent.track ?? []) { entry in
             let albumName = entry.album?.text.isEmpty == false ? entry.album?.text : nil
             let nowPlaying = entry.attr?.nowplaying == "true"
 
@@ -27,12 +26,11 @@ enum RecentTracksResolver {
                 db: db,
                 lastFM: lastFM
             )
-            let dto = try await result.toRecentTrackDTO(
+            return try await result.toRecentTrackDTO(
                 db: db,
                 nowPlaying: nowPlaying,
                 playedAt: entry.date?.uts.value.map { Date(timeIntervalSince1970: TimeInterval($0)) }
             )
-            items.append(dto)
         }
 
         logger.info("resolved recent-tracks", metadata: [

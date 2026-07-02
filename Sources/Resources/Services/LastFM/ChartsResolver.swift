@@ -23,32 +23,32 @@ enum ChartsResolver {
         logger.debug("charts cache miss", metadata: ["key": .string(cacheKey)])
 
         let overallStart = DispatchTime.now()
-        var items: [ChartEntryDTO] = []
+        var items: [ChartEntryDTO]
         let attr: LFMChartAttr
         switch type {
         case .artist:
             let chart = try await lastFM.topArtists(username: username, period: period.rawValue, limit: limit, page: page)
             attr = chart.attr
-            for entry in chart.artist ?? [] {
+            items = try await mapConcurrently(chart.artist ?? []) { entry in
                 let synced = try await LastFMSync.syncArtist(name: entry.name, username: username, db: db, lastFM: lastFM, syncSimilar: false)
-                items.append(try await entryDTO(artist: nil, playCount: entry.playcount?.value, entity: synced.artist, db: db))
+                return try await entryDTO(artist: nil, playCount: entry.playcount?.value, entity: synced.artist, db: db)
             }
 
         case .album:
             let chart = try await lastFM.topAlbums(username: username, period: period.rawValue, limit: limit, page: page)
             attr = chart.attr
-            for entry in chart.album ?? [] {
+            items = try await mapConcurrently(chart.album ?? []) { entry in
                 let syncedArtist = try await LastFMSync.syncArtist(name: entry.artist.name, username: username, db: db, lastFM: lastFM, syncSimilar: false)
                 let syncedAlbum = try await LastFMSync.syncAlbum(name: entry.name, artist: syncedArtist.artist, username: username, db: db, lastFM: lastFM)
-                items.append(try await entryDTO(artist: syncedArtist.artist.name, playCount: entry.playcount?.value, entity: syncedAlbum.album, db: db))
+                return try await entryDTO(artist: syncedArtist.artist.name, playCount: entry.playcount?.value, entity: syncedAlbum.album, db: db)
             }
 
         case .track:
             let chart = try await lastFM.topTracks(username: username, period: period.rawValue, limit: limit, page: page)
             attr = chart.attr
-            for entry in chart.track ?? [] {
+            items = try await mapConcurrently(chart.track ?? []) { entry in
                 let result = try await TrackInfoResolver.resolve(track: entry.name, album: nil, artist: entry.artist.name, username: username, db: db, lastFM: lastFM)
-                items.append(try await entryDTO(artist: result.artist.name, playCount: entry.playcount?.value, entity: result.track, db: db))
+                return try await entryDTO(artist: result.artist.name, playCount: entry.playcount?.value, entity: result.track, db: db)
             }
         }
 

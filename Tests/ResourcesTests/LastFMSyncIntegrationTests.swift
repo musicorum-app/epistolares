@@ -384,4 +384,29 @@ extension AppTests {
             #expect(trackCover.externalID == "artistcover")
         }
     }
+
+    @Test("syncArtist survives two concurrent syncs racing to attach the same similar artist")
+    func syncArtistHandlesConcurrentSimilarArtistAttachRace() async throws {
+        try await withTestApp { app in
+            let mock = MockLastFMClient()
+            await mock.setArtist(
+                .fixture(name: "Kelela", similar: [
+                    LFMArtist.SimilarArtist(name: "Rochelle Jordan", url: "https://www.last.fm/music/Rochelle+Jordan", image: nil),
+                ]),
+                forName: "Kelela"
+            )
+            await mock.setArtist(.fixture(name: "Rochelle Jordan"), forName: "Rochelle Jordan")
+
+            // Both calls start from scratch (no existing "Kelela" row yet) and each tries to attach
+            // "Rochelle Jordan" as a similar artist -- a duplicate-key race on the similar_artists
+            // pivot's unique constraint, same shape as the artist/album/cover create races.
+            async let first = LastFMSync.syncArtist(name: "Kelela", username: nil, db: app.db, lastFM: mock)
+            async let second = LastFMSync.syncArtist(name: "Kelela", username: nil, db: app.db, lastFM: mock)
+            _ = try await (first, second)
+
+            let kelela = try #require(try await Artist.query(on: app.db).filter(\.$name == "Kelela").first())
+            let similar = try await kelela.$similarArtists.get(reload: true, on: app.db)
+            #expect(similar.map(\.name) == ["Rochelle Jordan"], "the pivot row must exist exactly once, not fail or duplicate")
+        }
+    }
 }
