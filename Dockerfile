@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/build/.build \
         --static-swift-stdlib \
         -Xlinker -ljemalloc && \
     # Copy main executable to staging area
-    cp "$(swift build -c release --show-bin-path)/epistolares" /staging && \
+    cp "$(swift build -c release --show-bin-path)/Epistolares" /staging && \
     # Copy resources bundled by SPM to staging area
     find -L "$(swift build -c release --show-bin-path)" -regex '.*\.resources$' -exec cp -Ra {} /staging \;
 
@@ -87,5 +87,5 @@ USER vapor:vapor
 EXPOSE 8080
 
 # Start the Vapor service when the image is run, default to listening on 8080 in production environment
-ENTRYPOINT ["./epistolares"]
+ENTRYPOINT ["./Epistolares"]
 CMD ["serve", "--env", "production", "--hostname", "0.0.0.0", "--port", "8080"]
