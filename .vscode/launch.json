@@ -4,7 +4,7 @@
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:resources2}",
+            "cwd": "${workspaceFolder:Epistolares}",
             "name": "Debug Resources",
             "target": "Resources",
             "configuration": "debug",
@@ -14,11 +14,31 @@
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:resources2}",
+            "cwd": "${workspaceFolder:Epistolares}",
             "name": "Release Resources",
             "target": "Resources",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release Resources"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:resources2}",
+            "name": "Debug Epistolares",
+            "target": "Epistolares",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Epistolares"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:resources2}",
+            "name": "Release Epistolares",
+            "target": "Epistolares",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Epistolares"
         }
     ]
 }

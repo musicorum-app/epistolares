@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Resources2",
+    name: "Epistolares",
     platforms: [
        .macOS(.v13)
     ],
@@ -22,7 +22,7 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "Resources",
+            name: "Epistolares",
             dependencies: [
                 .product(name: "Fluent", package: "fluent"),
                 .product(name: "FluentPostgresDriver", package: "fluent-postgres-driver"),
@@ -36,9 +36,9 @@ let package = Package(
             swiftSettings: swiftSettings
         ),
         .testTarget(
-            name: "ResourcesTests",
+            name: "EpistolaresTests",
             dependencies: [
-                .target(name: "Resources"),
+                .target(name: "Epistolares"),
                 .product(name: "VaporTesting", package: "vapor"),
             ],
             swiftSettings: swiftSettings
