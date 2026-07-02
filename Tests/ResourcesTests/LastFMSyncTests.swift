@@ -49,6 +49,28 @@ struct LastFMSyncTests {
         #expect(LastFMSync.coverExternalID(from: []) == nil)
     }
 
+    @Test("coverExternalID treats Last.fm's known placeholder hashes as missing, same as an empty string")
+    func treatsPlaceholderHashesAsMissing() {
+        let placeholders = [
+            "4128a6eb29f94943c9d206c08e625904",
+            "c6f59c1e5e7240a4c0d427abd71f3dbb",
+            "2a96cbd8b46e442fc41c2b86b821562f",
+        ]
+        for hash in placeholders {
+            let images = [LFMImage(text: "https://lastfm.freetls.fastly.net/i/u/300x300/\(hash).jpg", size: "extralarge")]
+            #expect(LastFMSync.coverExternalID(from: images) == nil, "\(hash) should be treated as no image")
+        }
+    }
+
+    @Test("coverExternalID skips a placeholder image and falls back to an earlier real one")
+    func skipsPlaceholderAndFallsBackToReal() {
+        let images = [
+            LFMImage(text: "https://lastfm.freetls.fastly.net/i/u/34s/abc123.png", size: "small"),
+            LFMImage(text: "https://lastfm.freetls.fastly.net/i/u/300x300/2a96cbd8b46e442fc41c2b86b821562f.jpg", size: "extralarge"),
+        ]
+        #expect(LastFMSync.coverExternalID(from: images) == "abc123")
+    }
+
     @Test("isStale treats a missing date as stale")
     func nilDateIsStale() {
         #expect(LastFMSync.isStale(nil, ttl: 60) == true)

@@ -37,6 +37,76 @@ extension AppTests {
         }
     }
 
+    @Test("syncArtist retries and self-heals when the cached cover is a Last.fm placeholder")
+    func syncArtistSelfHealsPlaceholderCover() async throws {
+        try await withTestApp { app in
+            let mock = MockLastFMClient()
+            let placeholderImage = [LFMImage(text: "https://lastfm.freetls.fastly.net/i/u/300x300/2a96cbd8b46e442fc41c2b86b821562f.jpg", size: "extralarge")]
+            await mock.setArtist(.fixture(name: "Kelela", image: placeholderImage, userplaycount: 1), forName: "Kelela")
+
+            let first = try await LastFMSync.syncArtist(name: "Kelela", username: "userA", db: app.db, lastFM: mock)
+            let firstCover = try await first.artist.$cover.get(reload: true, on: app.db)
+            #expect(LastFMSync.isMissingCover(firstCover))
+
+            // Last.fm now has a real photo for this artist.
+            let realImage = [LFMImage(text: "https://lastfm.freetls.fastly.net/i/u/300x300/realhash123.jpg", size: "extralarge")]
+            await mock.setArtist(.fixture(name: "Kelela", image: realImage, userplaycount: 1), forName: "Kelela")
+
+            // A missing cover alone must NOT force a resync on every request (that would defeat
+            // caching entirely for any artist that genuinely has no photo on Last.fm). Self-heal
+            // only happens when a resync was going to happen anyway for another reason -- here, a
+            // different username, which has its own not-yet-fetched scrobbles.
+            let second = try await LastFMSync.syncArtist(name: "Kelela", username: "userB", db: app.db, lastFM: mock)
+            let secondCover = try await second.artist.$cover.get(reload: true, on: app.db)
+
+            #expect(!LastFMSync.isMissingCover(secondCover), "a placeholder cover should be replaced by a real one on the next resync")
+            #expect(secondCover.externalID == "realhash123")
+        }
+    }
+
+    @Test("syncArtist does not force a resync just because the cached cover is a placeholder")
+    func syncArtistDoesNotForceResyncForPlaceholderCover() async throws {
+        try await withTestApp { app in
+            let mock = MockLastFMClient()
+            let placeholderImage = [LFMImage(text: "https://lastfm.freetls.fastly.net/i/u/300x300/2a96cbd8b46e442fc41c2b86b821562f.jpg", size: "extralarge")]
+            await mock.setArtist(.fixture(name: "Kelela", image: placeholderImage), forName: "Kelela")
+
+            _ = try await LastFMSync.syncArtist(name: "Kelela", username: nil, db: app.db, lastFM: mock)
+            let callsAfterFirst = await mock.calls.count
+
+            // Same call again, well within the TTL window: an artist that genuinely has no photo
+            // on Last.fm must still be served from cache, not re-fetched forever.
+            _ = try await LastFMSync.syncArtist(name: "Kelela", username: nil, db: app.db, lastFM: mock)
+            let callsAfterSecond = await mock.calls.count
+
+            #expect(callsAfterSecond == callsAfterFirst, "a missing cover alone should not force a re-sync within the TTL window")
+        }
+    }
+
+    @Test("syncArtist never regresses a real cover back to a placeholder")
+    func syncArtistDoesNotDowngradeRealCover() async throws {
+        try await withTestApp { app in
+            let mock = MockLastFMClient()
+            let realImage = [LFMImage(text: "https://lastfm.freetls.fastly.net/i/u/300x300/realhash456.jpg", size: "extralarge")]
+            await mock.setArtist(.fixture(name: "Kelela", image: realImage, userplaycount: 1), forName: "Kelela")
+
+            let first = try await LastFMSync.syncArtist(name: "Kelela", username: "userA", db: app.db, lastFM: mock)
+            let firstCover = try await first.artist.$cover.get(reload: true, on: app.db)
+            #expect(firstCover.externalID == "realhash456")
+
+            // A later Last.fm response with only a placeholder image shouldn't erase the real one
+            // we already have. Using a different username forces a real resync (the scrobble
+            // freshness check is per-username) despite the artist row itself still being fresh.
+            let placeholderImage = [LFMImage(text: "https://lastfm.freetls.fastly.net/i/u/300x300/c6f59c1e5e7240a4c0d427abd71f3dbb.jpg", size: "extralarge")]
+            await mock.setArtist(.fixture(name: "Kelela", image: placeholderImage, userplaycount: 1), forName: "Kelela")
+
+            let second = try await LastFMSync.syncArtist(name: "Kelela", username: "userB", db: app.db, lastFM: mock)
+            let secondCover = try await second.artist.$cover.get(reload: true, on: app.db)
+
+            #expect(secondCover.externalID == "realhash456", "a real cover must never be replaced by a placeholder")
+        }
+    }
+
     @Test("syncArtist reuses cached scrobbles on a second call with a username, even when the play count hasn't changed")
     func syncArtistUsesScrobbleCacheWhenUnchanged() async throws {
         try await withTestApp { app in

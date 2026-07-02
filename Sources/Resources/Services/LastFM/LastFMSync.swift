@@ -127,10 +127,31 @@ enum LastFMSync {
         }
     }
 
+    private static let placeholderCoverIDs: Set<String> = [
+        "4128a6eb29f94943c9d206c08e625904",
+        "c6f59c1e5e7240a4c0d427abd71f3dbb",
+        "2a96cbd8b46e442fc41c2b86b821562f",
+    ]
+
     static func coverExternalID(from images: [LFMImage]?) -> String? {
-        guard let urlString = images?.last(where: { !$0.text.isEmpty })?.text,
-              let url = URL(string: urlString) else { return nil }
-        return url.deletingPathExtension().lastPathComponent
+        for image in (images ?? []).reversed() {
+            guard !image.text.isEmpty, let url = URL(string: image.text) else { continue }
+            let id = url.deletingPathExtension().lastPathComponent
+            if !placeholderCoverIDs.contains(id) { return id }
+        }
+        return nil
+    }
+
+    static func isMissingCover(_ cover: Cover) -> Bool {
+        cover.externalID.isEmpty || placeholderCoverIDs.contains(cover.externalID)
+    }
+
+    private static func betterCoverID(album: Album?, artist: Artist, db: any Database) async throws -> Cover.IDValue {
+        if let album {
+            let albumCover = try await album.$cover.get(reload: true, on: db)
+            if !isMissingCover(albumCover) { return try albumCover.requireID() }
+        }
+        return artist.$cover.id
     }
 
     /// Removes the appended "Read more on Last.fm" link (and, for bios, a trailing CC license notice)
@@ -224,6 +245,7 @@ enum LastFMSync {
         let info = try await canonicalInfo
         let cover = try await findOrCreateCover(externalID: coverExternalID(from: info.image) ?? "", db: db)
         let coverID = try cover.requireID()
+        let coverIsReal = !isMissingCover(cover)
 
         var artist = existing ?? Artist(name: info.name, url: info.url, externalID: cover.externalID, listeners: 0, scrobbles: 0, coverID: coverID)
         var diff = FieldDiff(artist, isNew: existing == nil)
@@ -238,8 +260,10 @@ enum LastFMSync {
         diff.set(\.summary, stripReadMoreLink(info.bio?.summary))
         diff.set(\.biography, stripReadMoreLink(info.bio?.content))
         diff.set(\.biographyLicense, ccLicense)
-        diff.set(\.externalID, cover.externalID)
-        diff.set(\.$cover.id, coverID)
+        if existing == nil || coverIsReal {
+            diff.set(\.externalID, cover.externalID)
+            diff.set(\.$cover.id, coverID)
+        }
         if let listeners = info.stats?.listeners?.value { diff.set(\.listeners, listeners) }
         if let scrobbleCount = info.stats?.playcount?.value { diff.set(\.scrobbles, scrobbleCount) }
 
@@ -310,6 +334,7 @@ enum LastFMSync {
         let info = try await canonicalInfo
         let cover = try await findOrCreateCover(externalID: coverExternalID(from: info.image) ?? "", db: db)
         let coverID = try cover.requireID()
+        let coverIsReal = !isMissingCover(cover)
 
         var album = existing ?? Album(name: info.name, url: info.url, listeners: 0, scrobbles: 0, artistID: artistID, coverID: coverID)
         var diff = FieldDiff(album, isNew: existing == nil)
@@ -320,7 +345,9 @@ enum LastFMSync {
         diff.set(\.summary, stripReadMoreLink(info.wiki?.summary))
         diff.set(\.biography, stripReadMoreLink(info.wiki?.content))
         diff.set(\.biographyLicense, ccLicense)
-        diff.set(\.$cover.id, coverID)
+        if existing == nil || coverIsReal {
+            diff.set(\.$cover.id, coverID)
+        }
         if let listeners = info.listeners?.value { diff.set(\.listeners, listeners) }
         if let scrobbleCount = info.playcount?.value { diff.set(\.scrobbles, scrobbleCount) }
 
@@ -430,7 +457,7 @@ enum LastFMSync {
                 scrobbles: info.playcount?.value ?? 0,
                 artistID: artistID,
                 albumID: artistID, // placeholder id, never persisted
-                coverID: album?.$cover.id ?? artist.$cover.id
+                coverID: try await betterCoverID(album: album, artist: artist, db: db)
             )
 
             var scrobbles: UserScrobbles?
@@ -454,7 +481,11 @@ enum LastFMSync {
         if let album, persistAlbumAssociation {
             let albumID = try album.requireID()
             diff.set(\.$album.id, albumID)
-            diff.set(\.$cover.id, album.$cover.id)
+            let albumCover = try await album.$cover.get(reload: true, on: db)
+            
+            if existing == nil || !isMissingCover(albumCover) {
+                diff.set(\.$cover.id, try albumCover.requireID())
+            }
         }
         if let duration = info.duration?.value { diff.set(\.duration, duration) }
         if let listeners = info.listeners?.value { diff.set(\.listeners, listeners) }
