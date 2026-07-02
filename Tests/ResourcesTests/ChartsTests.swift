@@ -145,6 +145,51 @@ extension AppTests {
         }
     }
 
+    @Test("GET /user/charts resolves over HTTP, decoding query params and clamping limit/page")
+    func chartsHTTPHappyPath() async throws {
+        try await withTestApp { app in
+            let mock = MockLastFMClient()
+            app.lastFM = mock
+            await mock.setValidUsername("blueslimee")
+            // limit=0 should clamp up to 1, so the mock only needs a fixture for limit=1.
+            await mock.setTopArtists(.fixture(entries: [("Kelela", 1, 500)], page: 1, totalPages: 1, total: 1), username: "blueslimee", period: "overall", limit: 1, page: 1)
+            await mock.setArtist(.fixture(name: "Kelela"), forName: "Kelela")
+
+            try await app.testing().test(.GET, "user/charts?username=blueslimee&type=artist&period=overall&limit=0&page=0", afterResponse: { res async throws in
+                #expect(res.status == .ok)
+                let body = try res.content.decode(ChartsResponseDTO.self)
+                #expect(body.items.map(\.name) == ["Kelela"])
+                #expect(body.page == 1)
+            })
+        }
+    }
+
+    @Test("GET /user/charts/all resolves over HTTP")
+    func chartsAllHTTPHappyPath() async throws {
+        try await withTestApp { app in
+            let mock = MockLastFMClient()
+            app.lastFM = mock
+            // Distinct limit from other tests in this suite: the response cache is a process-wide
+            // singleton (by design), so a colliding cache key here would pick up a hit left over
+            // from another test.
+            await mock.setValidUsername("blueslimee")
+            await mock.setTopArtists(.fixture(entries: [("Kelela", 1, 500)], page: 1, totalPages: 1, total: 1), username: "blueslimee", period: "overall", limit: 33, page: 1)
+            await mock.setTopAlbums(.fixture(entries: [("Hallucinogen", "Kelela", 1, 200)], page: 1, totalPages: 1, total: 1), username: "blueslimee", period: "overall", limit: 33, page: 1)
+            await mock.setTopTracks(.fixture(entries: [("All the Way Down", "Kelela", 1, 150)], page: 1, totalPages: 1, total: 1), username: "blueslimee", period: "overall", limit: 33, page: 1)
+            await mock.setArtist(.fixture(name: "Kelela"), forName: "Kelela")
+            await mock.setAlbum(.fixture(name: "Hallucinogen", artist: "Kelela"), forArtist: "Kelela", name: "Hallucinogen")
+            await mock.setTrack(.fixture(name: "All the Way Down"), forArtist: "Kelela", name: "All the Way Down")
+
+            try await app.testing().test(.GET, "user/charts/all?username=blueslimee&period=overall&limit=33", afterResponse: { res async throws in
+                #expect(res.status == .ok)
+                let body = try res.content.decode(ChartsAllResponseDTO.self)
+                #expect(body.artists.items.map(\.name) == ["Kelela"])
+                #expect(body.albums.items.map(\.name) == ["Hallucinogen"])
+                #expect(body.tracks.items.map(\.name) == ["All the Way Down"])
+            })
+        }
+    }
+
     @Test("GET /user/charts/all rejects an invalid username")
     func chartsAllRejectsInvalidUsername() async throws {
         try await withTestApp { app in

@@ -319,4 +319,69 @@ extension AppTests {
             #expect(scrobbleRows.isEmpty, "discovering a similar artist must not record scrobbles for the service account")
         }
     }
+
+    @Test("syncArtist survives two concurrent syncs of the same brand-new artist without duplicating it")
+    func syncArtistHandlesConcurrentCreateRace() async throws {
+        try await withTestApp { app in
+            let mock = MockLastFMClient()
+            await mock.setArtist(.fixture(name: "Kelela"), forName: "Kelela")
+
+            // Both calls race to INSERT the same never-before-seen artist. One wins; the other must
+            // hit createOrFetchExisting's constraint-violation fallback rather than erroring out.
+            async let first = LastFMSync.syncArtist(name: "Kelela", username: nil, db: app.db, lastFM: mock)
+            async let second = LastFMSync.syncArtist(name: "Kelela", username: nil, db: app.db, lastFM: mock)
+            let (a, b) = try await (first, second)
+
+            #expect(try a.artist.requireID() == b.artist.requireID())
+
+            let rows = try await Artist.query(on: app.db).filter(\.$name == "Kelela").all()
+            #expect(rows.count == 1, "a concurrent create race must not produce duplicate rows")
+        }
+    }
+
+    @Test("syncTrack (no confirmed album) prefers the album's cover over the artist's when the album has real artwork")
+    func syncTrackPrefersAlbumCoverWhenReal() async throws {
+        try await withTestApp { app in
+            let mock = MockLastFMClient()
+            let artistImage = [LFMImage(text: "https://lastfm.freetls.fastly.net/i/u/300x300/artistcover.jpg", size: "extralarge")]
+            let albumImage = [LFMImage(text: "https://lastfm.freetls.fastly.net/i/u/300x300/albumcover.jpg", size: "extralarge")]
+            await mock.setArtist(.fixture(name: "Some Artist", image: artistImage), forName: "Some Artist")
+            await mock.setAlbum(.fixture(name: "Some Album", artist: "Some Artist", image: albumImage, tracks: []), forArtist: "Some Artist", name: "Some Album")
+            await mock.setTrack(.fixture(name: "Some Track"), forArtist: "Some Artist", name: "Some Track")
+
+            let artist = try await LastFMSync.syncArtist(name: "Some Artist", username: nil, db: app.db, lastFM: mock)
+            let album = try await LastFMSync.syncAlbum(name: "Some Album", artist: artist.artist, username: nil, db: app.db, lastFM: mock)
+
+            let synced = try await LastFMSync.syncTrack(
+                name: "Some Track", artist: artist.artist, album: album.album, username: nil,
+                db: app.db, lastFM: mock, persistAlbumAssociation: false
+            )
+
+            let trackCover = try await synced.track.$cover.get(reload: true, on: app.db)
+            #expect(trackCover.externalID == "albumcover")
+        }
+    }
+
+    @Test("syncTrack (no confirmed album) falls back to the artist's cover when the album has none")
+    func syncTrackFallsBackToArtistCoverWhenAlbumCoverMissing() async throws {
+        try await withTestApp { app in
+            let mock = MockLastFMClient()
+            let artistImage = [LFMImage(text: "https://lastfm.freetls.fastly.net/i/u/300x300/artistcover.jpg", size: "extralarge")]
+            let placeholderImage = [LFMImage(text: "https://lastfm.freetls.fastly.net/i/u/300x300/2a96cbd8b46e442fc41c2b86b821562f.jpg", size: "extralarge")]
+            await mock.setArtist(.fixture(name: "Some Artist", image: artistImage), forName: "Some Artist")
+            await mock.setAlbum(.fixture(name: "Some Album", artist: "Some Artist", image: placeholderImage, tracks: []), forArtist: "Some Artist", name: "Some Album")
+            await mock.setTrack(.fixture(name: "Some Track"), forArtist: "Some Artist", name: "Some Track")
+
+            let artist = try await LastFMSync.syncArtist(name: "Some Artist", username: nil, db: app.db, lastFM: mock)
+            let album = try await LastFMSync.syncAlbum(name: "Some Album", artist: artist.artist, username: nil, db: app.db, lastFM: mock)
+
+            let synced = try await LastFMSync.syncTrack(
+                name: "Some Track", artist: artist.artist, album: album.album, username: nil,
+                db: app.db, lastFM: mock, persistAlbumAssociation: false
+            )
+
+            let trackCover = try await synced.track.$cover.get(reload: true, on: app.db)
+            #expect(trackCover.externalID == "artistcover")
+        }
+    }
 }
