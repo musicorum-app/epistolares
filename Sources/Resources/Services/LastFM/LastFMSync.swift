@@ -6,6 +6,8 @@ enum LastFMSync {
     static let entityTTL: TimeInterval = 24 * 60 * 60
     static let scrobbleTTL: TimeInterval = 5 * 60
 
+    private static let logger = Logger(label: "resources.sync")
+
     /// Last.fm is going to change how this works in the future!
     static let serviceUsername = Environment.get("SYSTEM_USERNAME") ?? "rj"
 
@@ -92,10 +94,9 @@ enum LastFMSync {
     ) async throws -> UserScrobbles {
         let ids = target.ids
         let record = existing ?? UserScrobbles(username: username, playCount: playCount, loved: loved, artistID: ids.artist, albumID: ids.album, trackID: ids.track)
-        var changed = existing == nil
-        if record.playCount != playCount { record.playCount = playCount; changed = true }
-        if record.loved != loved { record.loved = loved; changed = true }
-        if changed { try await record.save(on: db) }
+        record.playCount = playCount
+        record.loved = loved
+        try await record.save(on: db)
         return record
     }
 
@@ -108,6 +109,7 @@ enum LastFMSync {
         } catch {
             guard let dbError = error as? any DatabaseError, dbError.isConstraintFailure,
                   let existing = try await fetchExisting() else { throw error }
+            logger.debug("createOrFetchExisting: lost a create race, using the row a concurrent sync just inserted", metadata: ["model": .string(String(describing: Model.self))])
             return existing
         }
     }
@@ -185,6 +187,7 @@ enum LastFMSync {
             let synced = try await syncArtist(name: entry.name, username: serviceUsername, db: db, lastFM: lastFM, syncSimilar: false, trackScrobbles: false)
             let other = synced.artist
             if try other.requireID() != artistID {
+                logger.debug("attaching newly-discovered similar artist", metadata: ["artist": .string(artist.name), "similar": .string(other.name)])
                 try await artist.$similarArtists.attach(other, on: db)
             }
         }
@@ -203,8 +206,12 @@ enum LastFMSync {
                 scrobbles = try await findUserScrobbles(username: username, target: .artist(try existing.requireID()), db: db)
             }
             if username == nil || !trackScrobbles || !isStale(scrobbles?.updatedAt, ttl: scrobbleTTL) {
+                logger.debug("syncArtist cache hit", metadata: ["name": .string(name)])
                 return SyncedArtist(artist: existing, scrobbles: scrobbles)
             }
+            logger.debug("syncArtist cache miss: scrobbles stale", metadata: ["name": .string(name)])
+        } else {
+            logger.debug("syncArtist cache miss: entity missing or stale", metadata: ["name": .string(name)])
         }
 
         // Fetch both concurrently
@@ -286,8 +293,12 @@ enum LastFMSync {
                 scrobbles = try await findUserScrobbles(username: username, target: .album(try existing.requireID()), db: db)
             }
             if username == nil || !isStale(scrobbles?.updatedAt, ttl: scrobbleTTL) {
+                logger.debug("syncAlbum cache hit", metadata: ["name": .string(name)])
                 return SyncedAlbum(album: existing, scrobbles: scrobbles)
             }
+            logger.debug("syncAlbum cache miss: scrobbles stale", metadata: ["name": .string(name)])
+        } else {
+            logger.debug("syncAlbum cache miss: entity missing or stale", metadata: ["name": .string(name)])
         }
 
         async let canonicalInfo = lastFM.albumInfo(name: name, artist: artist.name, username: serviceUsername)
@@ -390,8 +401,12 @@ enum LastFMSync {
                 scrobbles = try await findUserScrobbles(username: username, target: .track(try existing.requireID()), db: db)
             }
             if username == nil || !isStale(scrobbles?.updatedAt, ttl: scrobbleTTL) {
+                logger.debug("syncTrack cache hit", metadata: ["name": .string(name)])
                 return SyncedTrack(track: existing, scrobbles: scrobbles)
             }
+            logger.debug("syncTrack cache miss: scrobbles stale", metadata: ["name": .string(name)])
+        } else {
+            logger.debug("syncTrack cache miss: entity missing or stale", metadata: ["name": .string(name)])
         }
 
         async let canonicalInfo = lastFM.trackInfo(name: name, artist: artist.name, username: serviceUsername)
@@ -421,9 +436,11 @@ enum LastFMSync {
             var scrobbles: UserScrobbles?
             if let username {
                 let resolvedUserInfo = username == serviceUsername ? info : try await userInfo
-                if let playCount = resolvedUserInfo?.userplaycount?.value {
-                    scrobbles = UserScrobbles(username: username, playCount: playCount, loved: resolvedUserInfo?.userloved?.value.map { $0 == 1 })
-                }
+                scrobbles = UserScrobbles(
+                    username: username,
+                    playCount: resolvedUserInfo?.userplaycount?.value ?? 0,
+                    loved: resolvedUserInfo?.userloved?.value.map { $0 == 1 }
+                )
             }
             return SyncedTrack(track: track, scrobbles: scrobbles)
         }

@@ -16,6 +16,7 @@ struct AlbumController: RouteCollection {
             do {
                 try await req.application.lastFM.validateUsername(username)
             } catch LastFMError.notFound {
+                req.logger.warning("album/info: invalid username", metadata: ["username": .string(username)])
                 throw Abort(.badRequest, reason: "Invalid Last.fm username")
             }
         }
@@ -24,6 +25,7 @@ struct AlbumController: RouteCollection {
         let albumName: String
         if let id = query.id {
             guard let album = try await Album.find(id, on: req.db) else {
+                req.logger.info("album/info: unknown id", metadata: ["id": .string(id.uuidString)])
                 throw Abort(.notFound)
             }
             let artist = try await album.$artist.get(on: req.db)
@@ -41,6 +43,7 @@ struct AlbumController: RouteCollection {
             let result = try await LastFMSync.syncAlbum(name: albumName, artist: syncedArtist.artist, username: query.username, db: req.db, lastFM: req.application.lastFM)
             return try await result.toDTO(db: req.db)
         } catch LastFMError.notFound {
+            req.logger.info("album/info: not found", metadata: ["name": .string(albumName), "artist": .string(artistName)])
             throw Abort(.notFound)
         }
     }

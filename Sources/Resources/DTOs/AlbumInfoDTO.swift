@@ -19,7 +19,7 @@ struct AlbumInfoResponseDTO: Content {
     var scrobbles: Int
     var cover: CoverDTO?
     var tags: [String]
-    var bio: ArtistBioDTO
+    var bio: ArtistBioDTO?
     var tracks: [AlbumTrackDTO]
     var userScrobbles: UserScrobbleDTO?
 }
@@ -45,7 +45,7 @@ extension LastFMSync.SyncedAlbum {
             scrobbles: album.scrobbles,
             cover: cover.toCoverDTO(),
             tags: tags.map { $0.name },
-            bio: ArtistBioDTO(summary: album.summary, content: album.biography, license: album.biographyLicense),
+            bio: .build(summary: album.summary, content: album.biography, license: album.biographyLicense),
             tracks: tracks.map { AlbumTrackDTO(id: $0.id ?? UUID(), name: $0.name, rank: $0.rank) },
             userScrobbles: scrobbles?.toDTO()
         )

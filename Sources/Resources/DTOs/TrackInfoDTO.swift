@@ -11,7 +11,11 @@ struct TrackInfoQuery: Content {
 
 struct UserScrobbleDTO: Content {
     var playCount: Int
-    var loved: Bool?
+}
+
+struct TrackScrobbleDTO: Content {
+    var playCount: Int
+    var loved: Bool
 }
 
 struct AlbumTrackDTO: Content {
@@ -31,15 +35,31 @@ struct EntityInfoDTO: Content {
     var tracks: [AlbumTrackDTO]?
 }
 
+/// Same shape as `EntityInfoDTO`, but for the `track` slot specifically -- carries `loved` via
+/// `TrackScrobbleDTO`, and never a nested tracklist.
+struct TrackEntityInfoDTO: Content {
+    var id: UUID
+    var name: String
+    var listeners: Int
+    var scrobbles: Int
+    var cover: CoverDTO?
+    var tags: [String]
+    var userScrobbles: TrackScrobbleDTO?
+}
+
 struct TrackInfoResponseDTO: Content {
-    var track: EntityInfoDTO
+    var track: TrackEntityInfoDTO
     var album: EntityInfoDTO?
     var artist: EntityInfoDTO
 }
 
 extension UserScrobbles {
     func toDTO() -> UserScrobbleDTO {
-        UserScrobbleDTO(playCount: playCount, loved: loved)
+        UserScrobbleDTO(playCount: playCount)
+    }
+
+    func toTrackDTO() -> TrackScrobbleDTO {
+        TrackScrobbleDTO(playCount: playCount, loved: loved ?? false)
     }
 }
 
@@ -80,14 +100,14 @@ extension TrackInfoResult {
 
         let trackCover = try await track.$cover.get(reload: true, on: db)
         let trackTags = track.id != nil ? try await track.$tags.get(reload: true, on: db) : []
-        let trackDTO = EntityInfoDTO(
+        let trackDTO = TrackEntityInfoDTO(
             id: track.id ?? UUID(),
             name: track.name,
             listeners: track.listeners,
             scrobbles: track.scrobbles,
             cover: trackCover.toCoverDTO(),
             tags: trackTags.map { $0.name },
-            userScrobbles: trackScrobbles?.toDTO()
+            userScrobbles: trackScrobbles?.toTrackDTO()
         )
 
         return TrackInfoResponseDTO(track: trackDTO, album: albumDTO, artist: artistDTO)

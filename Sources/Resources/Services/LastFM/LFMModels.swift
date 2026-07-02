@@ -343,3 +343,57 @@ struct LFMTopTracks: Decodable {
         attr = try container.decode(LFMChartAttr.self, forKey: .attr)
     }
 }
+
+// MARK: - user.getRecentTracks
+
+struct LFMRecentTracksResponse: Decodable {
+    let recenttracks: LFMRecentTracks
+}
+
+struct LFMRecentTracks: Decodable {
+    struct TextRef: Decodable {
+        let mbid: String?
+        let text: String
+
+        enum CodingKeys: String, CodingKey {
+            case mbid
+            case text = "#text"
+        }
+    }
+
+    struct DateRef: Decodable {
+        let uts: LFMIntString
+    }
+
+    struct Attr: Decodable {
+        let nowplaying: String?
+    }
+
+    struct Entry: Decodable {
+        let name: String
+        let url: String
+        let artist: TextRef
+        let album: TextRef?
+        let date: DateRef?
+        let attr: Attr?
+
+        enum CodingKeys: String, CodingKey {
+            case name, url, artist, album, date
+            case attr = "@attr"
+        }
+    }
+
+    let track: [Entry]?
+    let attr: LFMChartAttr
+
+    enum CodingKeys: String, CodingKey {
+        case track
+        case attr = "@attr"
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        track = try container.decodeLFMList(forKey: .track)
+        attr = try container.decode(LFMChartAttr.self, forKey: .attr)
+    }
+}

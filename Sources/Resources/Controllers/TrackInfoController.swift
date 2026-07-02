@@ -16,6 +16,7 @@ struct TrackInfoController: RouteCollection {
             do {
                 try await req.application.lastFM.validateUsername(username)
             } catch LastFMError.notFound {
+                req.logger.warning("track/info: invalid username", metadata: ["username": .string(username)])
                 throw Abort(.badRequest, reason: "Invalid Last.fm username")
             }
         }
@@ -31,6 +32,7 @@ struct TrackInfoController: RouteCollection {
             )
             return try await result.toDTO(db: req.db)
         } catch LastFMError.notFound {
+            req.logger.info("track/info: not found", metadata: ["track": .string(query.track), "artist": .string(query.artist), "album": .string(query.album ?? "nil")])
             throw Abort(.notFound)
         }
     }

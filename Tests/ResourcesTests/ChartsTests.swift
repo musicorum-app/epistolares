@@ -2,6 +2,7 @@
 import VaporTesting
 import Testing
 import Fluent
+import Logging
 
 extension AppTests {
     @Test("getCharts resolves a top-artists chart and syncs each entry")
@@ -18,13 +19,12 @@ extension AppTests {
 
             let response = try await ChartsResolver.resolve(
                 type: .artist, username: "blueslimee", period: .overall, limit: 50, page: 1,
-                db: app.db, lastFM: mock
+                db: app.db, lastFM: mock, logger: Logger(label: "test")
             )
 
             #expect(response.items.count == 2)
             #expect(response.items[0].name == "Kelela")
-            #expect(response.items[0].rank == 1)
-            #expect(response.items[0].playcount == 500)
+            #expect(response.items[0].playCount == 500)
             #expect(response.items[0].artist == nil)
             #expect(response.total == 2)
 
@@ -48,7 +48,7 @@ extension AppTests {
 
             let response = try await ChartsResolver.resolve(
                 type: .album, username: "blueslimee", period: .overall, limit: 50, page: 1,
-                db: app.db, lastFM: mock
+                db: app.db, lastFM: mock, logger: Logger(label: "test")
             )
 
             #expect(response.items.count == 1)
@@ -85,7 +85,7 @@ extension AppTests {
 
             let response = try await ChartsResolver.resolve(
                 type: .track, username: "blueslimee", period: .overall, limit: 50, page: 1,
-                db: app.db, lastFM: mock
+                db: app.db, lastFM: mock, logger: Logger(label: "test")
             )
 
             #expect(response.items.count == 1)
@@ -114,10 +114,10 @@ extension AppTests {
             )
             await mock.setArtist(.fixture(name: "Kelela"), forName: "Kelela")
 
-            _ = try await ChartsResolver.resolve(type: .artist, username: "blueslimee", period: .overall, limit: 23, page: 1, db: app.db, lastFM: mock)
+            _ = try await ChartsResolver.resolve(type: .artist, username: "blueslimee", period: .overall, limit: 23, page: 1, db: app.db, lastFM: mock, logger: Logger(label: "test"))
             let callsAfterFirst = await mock.calls.filter { $0.hasPrefix("topArtists") }.count
 
-            _ = try await ChartsResolver.resolve(type: .artist, username: "blueslimee", period: .overall, limit: 23, page: 1, db: app.db, lastFM: mock)
+            _ = try await ChartsResolver.resolve(type: .artist, username: "blueslimee", period: .overall, limit: 23, page: 1, db: app.db, lastFM: mock, logger: Logger(label: "test"))
             let callsAfterSecond = await mock.calls.filter { $0.hasPrefix("topArtists") }.count
 
             #expect(callsAfterFirst == 1)
@@ -137,7 +137,7 @@ extension AppTests {
             await mock.setAlbum(.fixture(name: "Hallucinogen", artist: "Kelela"), forArtist: "Kelela", name: "Hallucinogen")
             await mock.setTrack(.fixture(name: "All the Way Down"), forArtist: "Kelela", name: "All the Way Down")
 
-            let response = try await ChartsResolver.resolveAll(username: "blueslimee", period: .overall, limit: 10, db: app.db, lastFM: mock)
+            let response = try await ChartsResolver.resolveAll(username: "blueslimee", period: .overall, limit: 10, db: app.db, lastFM: mock, logger: Logger(label: "test"))
 
             #expect(response.artists.items.map(\.name) == ["Kelela"])
             #expect(response.albums.items.map(\.name) == ["Hallucinogen"])
@@ -151,7 +151,7 @@ extension AppTests {
             let mock = MockLastFMClient()
             app.lastFM = mock
 
-            try await app.testing().test(.GET, "user/charts/all?username=nobody", afterResponse: { res async in
+            try await app.testing().test(.GET, "user/charts/all?username=nobody&period=overall", afterResponse: { res async in
                 #expect(res.status == .badRequest)
             })
         }
@@ -163,7 +163,7 @@ extension AppTests {
             let mock = MockLastFMClient()
             app.lastFM = mock
 
-            try await app.testing().test(.GET, "user/charts?username=nobody&type=artist", afterResponse: { res async in
+            try await app.testing().test(.GET, "user/charts?username=nobody&type=artist&period=overall", afterResponse: { res async in
                 #expect(res.status == .badRequest)
             })
         }

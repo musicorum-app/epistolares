@@ -1,5 +1,6 @@
 import Fluent
 import Foundation
+import Logging
 
 enum ChartsResolver {
     private static let cache = InMemoryCache<String, ChartsResponseDTO>(ttl: 10 * 60)
@@ -11,43 +12,60 @@ enum ChartsResolver {
         limit: Int,
         page: Int,
         db: any Database,
-        lastFM: any LastFMClientProtocol
+        lastFM: any LastFMClientProtocol,
+        logger: Logger
     ) async throws -> ChartsResponseDTO {
         let cacheKey = "\(type.rawValue)|\(username.lowercased())|\(period.rawValue)|\(limit)|\(page)"
         if let cached = await cache.get(cacheKey) {
+            logger.debug("charts cache hit", metadata: ["key": .string(cacheKey)])
             return cached
         }
+        logger.debug("charts cache miss", metadata: ["key": .string(cacheKey)])
 
-        let response: ChartsResponseDTO
+        let overallStart = DispatchTime.now()
+        var items: [ChartEntryDTO] = []
+        let attr: LFMChartAttr
         switch type {
         case .artist:
             let chart = try await lastFM.topArtists(username: username, period: period.rawValue, limit: limit, page: page)
-            var items: [ChartEntryDTO] = []
+            attr = chart.attr
             for entry in chart.artist ?? [] {
                 let synced = try await LastFMSync.syncArtist(name: entry.name, username: username, db: db, lastFM: lastFM, syncSimilar: false)
-                items.append(try await entryDTO(rank: entry.attr?.rank?.value, artist: nil, playcount: entry.playcount?.value, entity: synced.artist, db: db))
+                items.append(try await entryDTO(artist: nil, playCount: entry.playcount?.value, entity: synced.artist, db: db))
             }
-            response = ChartsResponseDTO(type: type, period: period, page: chart.attr.page.value ?? page, totalPages: chart.attr.totalPages.value ?? 0, total: chart.attr.total.value ?? 0, items: items)
 
         case .album:
             let chart = try await lastFM.topAlbums(username: username, period: period.rawValue, limit: limit, page: page)
-            var items: [ChartEntryDTO] = []
+            attr = chart.attr
             for entry in chart.album ?? [] {
                 let syncedArtist = try await LastFMSync.syncArtist(name: entry.artist.name, username: username, db: db, lastFM: lastFM, syncSimilar: false)
                 let syncedAlbum = try await LastFMSync.syncAlbum(name: entry.name, artist: syncedArtist.artist, username: username, db: db, lastFM: lastFM)
-                items.append(try await entryDTO(rank: entry.attr?.rank?.value, artist: syncedArtist.artist.name, playcount: entry.playcount?.value, entity: syncedAlbum.album, db: db))
+                items.append(try await entryDTO(artist: syncedArtist.artist.name, playCount: entry.playcount?.value, entity: syncedAlbum.album, db: db))
             }
-            response = ChartsResponseDTO(type: type, period: period, page: chart.attr.page.value ?? page, totalPages: chart.attr.totalPages.value ?? 0, total: chart.attr.total.value ?? 0, items: items)
 
         case .track:
             let chart = try await lastFM.topTracks(username: username, period: period.rawValue, limit: limit, page: page)
-            var items: [ChartEntryDTO] = []
+            attr = chart.attr
             for entry in chart.track ?? [] {
                 let result = try await TrackInfoResolver.resolve(track: entry.name, album: nil, artist: entry.artist.name, username: username, db: db, lastFM: lastFM)
-                items.append(try await entryDTO(rank: entry.attr?.rank?.value, artist: result.artist.name, playcount: entry.playcount?.value, entity: result.track, db: db))
+                items.append(try await entryDTO(artist: result.artist.name, playCount: entry.playcount?.value, entity: result.track, db: db))
             }
-            response = ChartsResponseDTO(type: type, period: period, page: chart.attr.page.value ?? page, totalPages: chart.attr.totalPages.value ?? 0, total: chart.attr.total.value ?? 0, items: items)
         }
+
+        // Guarantee "ordered by playCount" regardless of what order Last.fm happened to send.
+        items.sort { $0.playCount > $1.playCount }
+
+        let response = ChartsResponseDTO(
+            page: attr.page.value ?? page,
+            totalPages: attr.totalPages.value ?? 0,
+            total: attr.total.value ?? 0,
+            items: items
+        )
+
+        let overallMs = Double(DispatchTime.now().uptimeNanoseconds - overallStart.uptimeNanoseconds) / 1_000_000
+        logger.info("resolved charts", metadata: [
+            "type": .string(type.rawValue), "username": .string(username), "count": .stringConvertible(items.count), "ms": .stringConvertible(String(format: "%.1f", overallMs)),
+        ])
 
         await cache.set(cacheKey, response)
         return response
@@ -58,23 +76,23 @@ enum ChartsResolver {
         period: ChartPeriod,
         limit: Int,
         db: any Database,
-        lastFM: any LastFMClientProtocol
+        lastFM: any LastFMClientProtocol,
+        logger: Logger
     ) async throws -> ChartsAllResponseDTO {
-        async let artists = resolve(type: .artist, username: username, period: period, limit: limit, page: 1, db: db, lastFM: lastFM)
-        async let albums = resolve(type: .album, username: username, period: period, limit: limit, page: 1, db: db, lastFM: lastFM)
-        async let tracks = resolve(type: .track, username: username, period: period, limit: limit, page: 1, db: db, lastFM: lastFM)
-        return try await ChartsAllResponseDTO(period: period, artists: artists, albums: albums, tracks: tracks)
+        async let artists = resolve(type: .artist, username: username, period: period, limit: limit, page: 1, db: db, lastFM: lastFM, logger: logger)
+        async let albums = resolve(type: .album, username: username, period: period, limit: limit, page: 1, db: db, lastFM: lastFM, logger: logger)
+        async let tracks = resolve(type: .track, username: username, period: period, limit: limit, page: 1, db: db, lastFM: lastFM, logger: logger)
+        return try await ChartsAllResponseDTO(artists: artists, albums: albums, tracks: tracks)
     }
 
-    private static func entryDTO(rank: Int?, artist: String?, playcount: Int?, entity: some ChartResolvable, db: any Database) async throws -> ChartEntryDTO {
+    private static func entryDTO(artist: String?, playCount: Int?, entity: some ChartResolvable, db: any Database) async throws -> ChartEntryDTO {
         let cover = try await entity.cover(db: db)
         return ChartEntryDTO(
-            rank: rank ?? 0,
             id: entity.id ?? UUID(),
             name: entity.name,
             artist: artist,
             cover: cover.toCoverDTO(),
-            playcount: playcount ?? 0
+            playCount: playCount ?? 0
         )
     }
 }

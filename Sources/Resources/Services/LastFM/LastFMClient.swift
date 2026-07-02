@@ -11,10 +11,12 @@ protocol LastFMClientProtocol: Sendable {
     func topArtists(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopArtists
     func topAlbums(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopAlbums
     func topTracks(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopTracks
+    func recentTracks(username: String, limit: Int, page: Int) async throws -> LFMRecentTracks
 }
 
 struct LastFMClient: LastFMClientProtocol, Sendable {
     private static let baseURL = "https://ws.audioscrobbler.com/2.0/"
+    private static let logger = Logger(label: "resources.lastfm")
 
     let client: any Client
     let apiKey: String
@@ -24,6 +26,12 @@ struct LastFMClient: LastFMClientProtocol, Sendable {
         query["method"] = method
         query["api_key"] = apiKey
         query["format"] = "json"
+
+        let start = DispatchTime.now()
+        defer {
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+            Self.logger.debug("Last.fm \(method)", metadata: ["ms": .stringConvertible(String(format: "%.1f", elapsedMs))])
+        }
 
         let response = try await client.get(URI(string: Self.baseURL)) { req in
             try req.query.encode(query)
@@ -75,6 +83,11 @@ struct LastFMClient: LastFMClientProtocol, Sendable {
 
     func topTracks(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopTracks {
         try await call(method: "user.gettoptracks", params: chartParams(username: username, period: period, limit: limit, page: page), as: LFMTopTracksResponse.self).toptracks
+    }
+
+    func recentTracks(username: String, limit: Int, page: Int) async throws -> LFMRecentTracks {
+        let params = ["user": username, "limit": "\(limit)", "page": "\(page)"]
+        return try await call(method: "user.getrecenttracks", params: params, as: LFMRecentTracksResponse.self).recenttracks
     }
 }
 

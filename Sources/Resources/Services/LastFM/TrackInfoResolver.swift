@@ -1,4 +1,5 @@
 import Fluent
+import Logging
 
 struct TrackInfoResult {
     let track: Track
@@ -10,6 +11,8 @@ struct TrackInfoResult {
 }
 
 enum TrackInfoResolver {
+    private static let logger = Logger(label: "resources.trackinfo")
+
     static func resolve(
         track: String,
         album: String?,
@@ -41,8 +44,11 @@ enum TrackInfoResolver {
                 }
             }
         } else if let discovered = try await discoverAlbumName(cleanTrack: cleanTrack, originalTrack: track, artist: artist, lastFM: lastFM) {
+            logger.debug("discovered album for track with no album given", metadata: ["track": .string(track), "artist": .string(artist), "album": .string(discovered.album)])
             syncedAlbum = try await LastFMSync.syncAlbum(name: discovered.album, artist: syncedArtist.artist, username: username, db: db, lastFM: lastFM)
             matchedTrackName = discovered.trackName
+        } else {
+            logger.debug("no album could be discovered for track", metadata: ["track": .string(track), "artist": .string(artist)])
         }
 
         if let albumResult = syncedAlbum {

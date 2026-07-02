@@ -9,9 +9,16 @@ struct ArtistInfoQuery: Content {
 }
 
 struct ArtistBioDTO: Content {
-    var summary: String?
-    var content: String?
-    var license: String?
+    var summary: String
+    var content: String
+    var license: String
+}
+
+extension ArtistBioDTO {
+    static func build(summary: String?, content: String?, license: String?) -> ArtistBioDTO? {
+        guard let summary, let content, let license else { return nil }
+        return ArtistBioDTO(summary: summary, content: content, license: license)
+    }
 }
 
 struct SimilarArtistDTO: Content {
@@ -30,7 +37,7 @@ struct ArtistInfoResponseDTO: Content {
     var scrobbles: Int
     var cover: CoverDTO?
     var tags: [String]
-    var bio: ArtistBioDTO
+    var bio: ArtistBioDTO?
     var similarArtists: [SimilarArtistDTO]
     var userScrobbles: UserScrobbleDTO?
 }
@@ -61,7 +68,7 @@ extension LastFMSync.SyncedArtist {
             scrobbles: artist.scrobbles,
             cover: cover.toCoverDTO(),
             tags: tags.map { $0.name },
-            bio: ArtistBioDTO(summary: artist.summary, content: artist.biography, license: artist.biographyLicense),
+            bio: .build(summary: artist.summary, content: artist.biography, license: artist.biographyLicense),
             similarArtists: similarDTOs,
             userScrobbles: scrobbles?.toDTO()
         )

@@ -37,6 +37,26 @@ extension AppTests {
         }
     }
 
+    @Test("syncArtist reuses cached scrobbles on a second call with a username, even when the play count hasn't changed")
+    func syncArtistUsesScrobbleCacheWhenUnchanged() async throws {
+        try await withTestApp { app in
+            let mock = MockLastFMClient()
+            // Same userplaycount both times -- upsertScrobbles previously skipped the save() (and
+            // so never bumped `updatedAt`) when nothing had changed, which made every subsequent
+            // call see the scrobbles row as permanently stale and re-hit Last.fm regardless of the
+            // 5-minute scrobbleTTL.
+            await mock.setArtist(.fixture(name: "Kelela", userplaycount: 42), forName: "Kelela")
+
+            _ = try await LastFMSync.syncArtist(name: "Kelela", username: "rj", db: app.db, lastFM: mock)
+            let callsAfterFirst = await mock.calls.count
+
+            _ = try await LastFMSync.syncArtist(name: "Kelela", username: "rj", db: app.db, lastFM: mock)
+            let callsAfterSecond = await mock.calls.count
+
+            #expect(callsAfterSecond == callsAfterFirst, "an unchanged play count should still count as a fresh scrobble check, not force a re-sync")
+        }
+    }
+
     @Test("syncArtist records an alias when autocorrect changes the name")
     func syncArtistRecordsAlias() async throws {
         try await withTestApp { app in

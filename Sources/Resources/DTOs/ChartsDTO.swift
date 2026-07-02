@@ -19,29 +19,26 @@ enum ChartPeriod: String, Content, CaseIterable, Sendable {
 struct ChartsQuery: Content {
     var username: String
     var type: ChartType
-    var period: ChartPeriod?
+    var period: ChartPeriod
     var limit: Int?
     var page: Int?
 }
 
 struct ChartsAllQuery: Content {
     var username: String
-    var period: ChartPeriod?
+    var period: ChartPeriod
     var limit: Int?
 }
 
 struct ChartEntryDTO: Content, Sendable {
-    var rank: Int
     var id: UUID
     var name: String
     var artist: String?
     var cover: CoverDTO?
-    var playcount: Int
+    var playCount: Int
 }
 
 struct ChartsResponseDTO: Content, Sendable {
-    var type: ChartType
-    var period: ChartPeriod
     var page: Int
     var totalPages: Int
     var total: Int
@@ -49,7 +46,6 @@ struct ChartsResponseDTO: Content, Sendable {
 }
 
 struct ChartsAllResponseDTO: Content, Sendable {
-    var period: ChartPeriod
     var artists: ChartsResponseDTO
     var albums: ChartsResponseDTO
     var tracks: ChartsResponseDTO
