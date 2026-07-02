@@ -100,6 +100,56 @@ enum LastFMSync {
         return record
     }
 
+    private static func syncScrobbles(username: String?, target: ScrobbleTarget, playCount: Int?, loved: Bool?, db: any Database) async throws -> UserScrobbles? {
+        guard let username else { return nil }
+        let existing = try await findUserScrobbles(username: username, target: target, db: db)
+        return try await upsertScrobbles(existing: existing, username: username, playCount: playCount ?? existing?.playCount ?? 0, loved: loved, target: target, db: db)
+    }
+
+    // MARK: - Freshness
+
+    fileprivate protocol HasUpdatedAt {
+        var updatedAt: Date? { get }
+    }
+
+    private enum FreshnessCheck<Entity> {
+        case hit(Entity, UserScrobbles?)
+        case miss(reason: String)
+    }
+
+    private static func checkFreshness<Entity: HasUpdatedAt>(
+        _ existing: Entity?,
+        username: String?,
+        trackScrobbles: Bool = true,
+        target: (Entity) throws -> ScrobbleTarget,
+        db: any Database
+    ) async throws -> FreshnessCheck<Entity> {
+        guard let existing, !isStale(existing.updatedAt, ttl: entityTTL) else {
+            return .miss(reason: "entity missing or stale")
+        }
+        var scrobbles: UserScrobbles?
+        if let username, trackScrobbles {
+            scrobbles = try await findUserScrobbles(username: username, target: try target(existing), db: db)
+        }
+        if username == nil || !trackScrobbles || !isStale(scrobbles?.updatedAt, ttl: scrobbleTTL) {
+            return .hit(existing, scrobbles)
+        }
+        return .miss(reason: "scrobbles stale")
+    }
+
+    private static func fetchCanonicalAndUser<Info>(
+        username: String?,
+        trackScrobbles: Bool = true,
+        _ fetch: @Sendable @escaping (String) async throws -> Info
+    ) async throws -> (canonical: Info, user: Info?) {
+        async let canonical = fetch(serviceUsername)
+        async let user: Info? = {
+            guard let username, trackScrobbles, username != serviceUsername else { return nil }
+            return try await fetch(username)
+        }()
+        return (try await canonical, try await user)
+    }
+
     // MARK: - Shared helpers
 
     private static func createOrFetchExisting<Model: FluentKit.Model>(_ model: Model, db: any Database, fetchExisting: () async throws -> Model?) async throws -> Model {
@@ -221,28 +271,17 @@ enum LastFMSync {
     static func syncArtist(name: String, username: String?, db: any Database, lastFM: any LastFMClientProtocol, syncSimilar: Bool = true, trackScrobbles: Bool = true) async throws -> SyncedArtist {
         let existing = try await findArtistByNameOrAlias(name, db: db)
 
-        if let existing, !isStale(existing.updatedAt, ttl: entityTTL) {
-            var scrobbles: UserScrobbles?
-            if let username, trackScrobbles {
-                scrobbles = try await findUserScrobbles(username: username, target: .artist(try existing.requireID()), db: db)
-            }
-            if username == nil || !trackScrobbles || !isStale(scrobbles?.updatedAt, ttl: scrobbleTTL) {
-                logger.debug("syncArtist cache hit", metadata: ["name": .string(name)])
-                return SyncedArtist(artist: existing, scrobbles: scrobbles)
-            }
-            logger.debug("syncArtist cache miss: scrobbles stale", metadata: ["name": .string(name)])
-        } else {
-            logger.debug("syncArtist cache miss: entity missing or stale", metadata: ["name": .string(name)])
+        switch try await checkFreshness(existing, username: username, trackScrobbles: trackScrobbles, target: { .artist(try $0.requireID()) }, db: db) {
+        case .hit(let artist, let scrobbles):
+            logger.debug("syncArtist cache hit", metadata: ["name": .string(name)])
+            return SyncedArtist(artist: artist, scrobbles: scrobbles)
+        case .miss(let reason):
+            logger.debug("syncArtist cache miss: \(reason)", metadata: ["name": .string(name)])
         }
 
-        // Fetch both concurrently
-        async let canonicalInfo = lastFM.artistInfo(name: name, username: serviceUsername)
-        async let userInfo: LFMArtist? = {
-            guard let username, trackScrobbles, username != serviceUsername else { return nil }
-            return try await lastFM.artistInfo(name: name, username: username)
-        }()
-
-        let info = try await canonicalInfo
+        let (info, userInfo) = try await fetchCanonicalAndUser(username: username, trackScrobbles: trackScrobbles) { username in
+            try await lastFM.artistInfo(name: name, username: username)
+        }
         let cover = try await findOrCreateCover(externalID: coverExternalID(from: info.image) ?? "", db: db)
         let coverID = try cover.requireID()
         let coverIsReal = !isMissingCover(cover)
@@ -285,18 +324,9 @@ enum LastFMSync {
         }
 
         var scrobbles: UserScrobbles?
-        if let username, trackScrobbles {
-            let userPlaycount = username == serviceUsername ? info.stats?.userplaycount?.value : try await userInfo?.stats?.userplaycount?.value
-            let target = ScrobbleTarget.artist(try artist.requireID())
-            let existingScrobbles = try await findUserScrobbles(username: username, target: target, db: db)
-            scrobbles = try await upsertScrobbles(
-                existing: existingScrobbles,
-                username: username,
-                playCount: userPlaycount ?? existingScrobbles?.playCount ?? 0,
-                loved: nil,
-                target: target,
-                db: db
-            )
+        if trackScrobbles {
+            let userPlaycount = username == serviceUsername ? info.stats?.userplaycount?.value : userInfo?.stats?.userplaycount?.value
+            scrobbles = try await syncScrobbles(username: username, target: .artist(try artist.requireID()), playCount: userPlaycount, loved: nil, db: db)
         }
 
         return SyncedArtist(artist: artist, scrobbles: scrobbles)
@@ -311,27 +341,17 @@ enum LastFMSync {
             .filter(\.$artist.$id == artistID)
             .first()
 
-        if let existing, !isStale(existing.updatedAt, ttl: entityTTL) {
-            var scrobbles: UserScrobbles?
-            if let username {
-                scrobbles = try await findUserScrobbles(username: username, target: .album(try existing.requireID()), db: db)
-            }
-            if username == nil || !isStale(scrobbles?.updatedAt, ttl: scrobbleTTL) {
-                logger.debug("syncAlbum cache hit", metadata: ["name": .string(name)])
-                return SyncedAlbum(album: existing, scrobbles: scrobbles)
-            }
-            logger.debug("syncAlbum cache miss: scrobbles stale", metadata: ["name": .string(name)])
-        } else {
-            logger.debug("syncAlbum cache miss: entity missing or stale", metadata: ["name": .string(name)])
+        switch try await checkFreshness(existing, username: username, target: { .album(try $0.requireID()) }, db: db) {
+        case .hit(let album, let scrobbles):
+            logger.debug("syncAlbum cache hit", metadata: ["name": .string(name)])
+            return SyncedAlbum(album: album, scrobbles: scrobbles)
+        case .miss(let reason):
+            logger.debug("syncAlbum cache miss: \(reason)", metadata: ["name": .string(name)])
         }
 
-        async let canonicalInfo = lastFM.albumInfo(name: name, artist: artist.name, username: serviceUsername)
-        async let userInfo: LFMAlbum? = {
-            guard let username, username != serviceUsername else { return nil }
-            return try await lastFM.albumInfo(name: name, artist: artist.name, username: username)
-        }()
-
-        let info = try await canonicalInfo
+        let (info, userInfo) = try await fetchCanonicalAndUser(username: username) { username in
+            try await lastFM.albumInfo(name: name, artist: artist.name, username: username)
+        }
         let cover = try await findOrCreateCover(externalID: coverExternalID(from: info.image) ?? "", db: db)
         let coverID = try cover.requireID()
         let coverIsReal = !isMissingCover(cover)
@@ -389,20 +409,8 @@ enum LastFMSync {
             }
         }
 
-        var scrobbles: UserScrobbles?
-        if let username {
-            let userPlaycount = username == serviceUsername ? info.userplaycount?.value : try await userInfo?.userplaycount?.value
-            let target = ScrobbleTarget.album(albumID)
-            let existingScrobbles = try await findUserScrobbles(username: username, target: target, db: db)
-            scrobbles = try await upsertScrobbles(
-                existing: existingScrobbles,
-                username: username,
-                playCount: userPlaycount ?? existingScrobbles?.playCount ?? 0,
-                loved: nil,
-                target: target,
-                db: db
-            )
-        }
+        let userPlaycount = username == serviceUsername ? info.userplaycount?.value : userInfo?.userplaycount?.value
+        let scrobbles = try await syncScrobbles(username: username, target: .album(albumID), playCount: userPlaycount, loved: nil, db: db)
 
         return SyncedAlbum(album: album, scrobbles: scrobbles)
     }
@@ -422,27 +430,17 @@ enum LastFMSync {
             existing = try await Track.query(on: db).filter(\.$name == name).filter(\.$artist.$id == artistID).first()
         }
 
-        if let existing, !isStale(existing.updatedAt, ttl: entityTTL) {
-            var scrobbles: UserScrobbles?
-            if let username {
-                scrobbles = try await findUserScrobbles(username: username, target: .track(try existing.requireID()), db: db)
-            }
-            if username == nil || !isStale(scrobbles?.updatedAt, ttl: scrobbleTTL) {
-                logger.debug("syncTrack cache hit", metadata: ["name": .string(name)])
-                return SyncedTrack(track: existing, scrobbles: scrobbles)
-            }
-            logger.debug("syncTrack cache miss: scrobbles stale", metadata: ["name": .string(name)])
-        } else {
-            logger.debug("syncTrack cache miss: entity missing or stale", metadata: ["name": .string(name)])
+        switch try await checkFreshness(existing, username: username, target: { .track(try $0.requireID()) }, db: db) {
+        case .hit(let track, let scrobbles):
+            logger.debug("syncTrack cache hit", metadata: ["name": .string(name)])
+            return SyncedTrack(track: track, scrobbles: scrobbles)
+        case .miss(let reason):
+            logger.debug("syncTrack cache miss: \(reason)", metadata: ["name": .string(name)])
         }
 
-        async let canonicalInfo = lastFM.trackInfo(name: name, artist: artist.name, username: serviceUsername)
-        async let userInfo: LFMTrack? = {
-            guard let username, username != serviceUsername else { return nil }
-            return try await lastFM.trackInfo(name: name, artist: artist.name, username: username)
-        }()
-
-        let info = try await canonicalInfo
+        let (info, userInfo) = try await fetchCanonicalAndUser(username: username) { username in
+            try await lastFM.trackInfo(name: name, artist: artist.name, username: username)
+        }
         let canCreateOrAssociate = album != nil && persistAlbumAssociation
 
         guard existing != nil || canCreateOrAssociate else {
@@ -462,7 +460,7 @@ enum LastFMSync {
 
             var scrobbles: UserScrobbles?
             if let username {
-                let resolvedUserInfo = username == serviceUsername ? info : try await userInfo
+                let resolvedUserInfo = username == serviceUsername ? info : userInfo
                 scrobbles = UserScrobbles(
                     username: username,
                     playCount: resolvedUserInfo?.userplaycount?.value ?? 0,
@@ -482,7 +480,6 @@ enum LastFMSync {
             let albumID = try album.requireID()
             diff.set(\.$album.id, albumID)
             let albumCover = try await album.$cover.get(reload: true, on: db)
-            
             if existing == nil || !isMissingCover(albumCover) {
                 diff.set(\.$cover.id, try albumCover.requireID())
             }
@@ -499,21 +496,19 @@ enum LastFMSync {
             db: db
         )
 
-        var scrobbles: UserScrobbles?
-        if let username {
-            let resolvedUserInfo = username == serviceUsername ? info : try await userInfo
-            let target = ScrobbleTarget.track(try track.requireID())
-            let existingScrobbles = try await findUserScrobbles(username: username, target: target, db: db)
-            scrobbles = try await upsertScrobbles(
-                existing: existingScrobbles,
-                username: username,
-                playCount: resolvedUserInfo?.userplaycount?.value ?? existingScrobbles?.playCount ?? 0,
-                loved: resolvedUserInfo?.userloved?.value.map { $0 == 1 },
-                target: target,
-                db: db
-            )
-        }
+        let resolvedUserInfo = username == serviceUsername ? info : userInfo
+        let scrobbles = try await syncScrobbles(
+            username: username,
+            target: .track(try track.requireID()),
+            playCount: resolvedUserInfo?.userplaycount?.value,
+            loved: resolvedUserInfo?.userloved?.value.map { $0 == 1 },
+            db: db
+        )
 
         return SyncedTrack(track: track, scrobbles: scrobbles)
     }
 }
+
+extension Artist: LastFMSync.HasUpdatedAt {}
+extension Album: LastFMSync.HasUpdatedAt {}
+extension Track: LastFMSync.HasUpdatedAt {}

@@ -29,8 +29,7 @@ struct LastFMClient: LastFMClientProtocol, Sendable {
 
         let start = DispatchTime.now()
         defer {
-            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
-            Self.logger.debug("Last.fm \(method)", metadata: ["ms": .stringConvertible(String(format: "%.1f", elapsedMs))])
+            Self.logger.debug("Last.fm \(method)", metadata: ["ms": .stringConvertible(start.elapsedMs)])
         }
 
         let response = try await client.get(URI(string: Self.baseURL)) { req in
@@ -104,5 +103,17 @@ extension Application {
             return client
         }
         set { storage[LastFMClientKey.self] = newValue }
+    }
+}
+
+extension Request {
+    func validateLastFMUsername(_ username: String?, endpoint: String) async throws {
+        guard let username else { return }
+        do {
+            try await application.lastFM.validateUsername(username)
+        } catch LastFMError.notFound {
+            logger.warning("\(endpoint): invalid username", metadata: ["username": .string(username)])
+            throw Abort(.badRequest, reason: "Invalid Last.fm username")
+        }
     }
 }

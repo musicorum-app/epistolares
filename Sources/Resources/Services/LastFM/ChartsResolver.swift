@@ -62,9 +62,8 @@ enum ChartsResolver {
             items: items
         )
 
-        let overallMs = Double(DispatchTime.now().uptimeNanoseconds - overallStart.uptimeNanoseconds) / 1_000_000
         logger.info("resolved charts", metadata: [
-            "type": .string(type.rawValue), "username": .string(username), "count": .stringConvertible(items.count), "ms": .stringConvertible(String(format: "%.1f", overallMs)),
+            "type": .string(type.rawValue), "username": .string(username), "count": .stringConvertible(items.count), "ms": .stringConvertible(overallStart.elapsedMs),
         ])
 
         await cache.set(cacheKey, response)

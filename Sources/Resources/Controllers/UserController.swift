@@ -13,24 +13,15 @@ struct UserController: RouteCollection {
     @Sendable
     func charts(req: Request) async throws -> ChartsResponseDTO {
         let query = try req.query.decode(ChartsQuery.self)
-
-        do {
-            try await req.application.lastFM.validateUsername(query.username)
-        } catch LastFMError.notFound {
-            req.logger.warning("user/charts: invalid username", metadata: ["username": .string(query.username)])
-            throw Abort(.badRequest, reason: "Invalid Last.fm username")
-        }
-
-        let limit = min(max(query.limit ?? 50, 1), 100)
-        let page = max(query.page ?? 1, 1)
+        try await req.validateLastFMUsername(query.username, endpoint: "user/charts")
 
         do {
             return try await ChartsResolver.resolve(
                 type: query.type,
                 username: query.username,
                 period: query.period,
-                limit: limit,
-                page: page,
+                limit: clampedLimit(query.limit, default: 50),
+                page: clampedPage(query.page),
                 db: req.db,
                 lastFM: req.application.lastFM,
                 logger: req.logger
@@ -44,21 +35,13 @@ struct UserController: RouteCollection {
     @Sendable
     func chartsAll(req: Request) async throws -> ChartsAllResponseDTO {
         let query = try req.query.decode(ChartsAllQuery.self)
-
-        do {
-            try await req.application.lastFM.validateUsername(query.username)
-        } catch LastFMError.notFound {
-            req.logger.warning("user/charts/all: invalid username", metadata: ["username": .string(query.username)])
-            throw Abort(.badRequest, reason: "Invalid Last.fm username")
-        }
-
-        let limit = min(max(query.limit ?? 50, 1), 100)
+        try await req.validateLastFMUsername(query.username, endpoint: "user/charts/all")
 
         do {
             return try await ChartsResolver.resolveAll(
                 username: query.username,
                 period: query.period,
-                limit: limit,
+                limit: clampedLimit(query.limit, default: 50),
                 db: req.db,
                 lastFM: req.application.lastFM,
                 logger: req.logger
@@ -72,22 +55,13 @@ struct UserController: RouteCollection {
     @Sendable
     func recentTracks(req: Request) async throws -> RecentTracksResponseDTO {
         let query = try req.query.decode(RecentTracksQuery.self)
-
-        do {
-            try await req.application.lastFM.validateUsername(query.username)
-        } catch LastFMError.notFound {
-            req.logger.warning("user/recent-tracks: invalid username", metadata: ["username": .string(query.username)])
-            throw Abort(.badRequest, reason: "Invalid Last.fm username")
-        }
-
-        let limit = min(max(query.limit ?? 5, 1), 100)
-        let page = max(query.page ?? 1, 1)
+        try await req.validateLastFMUsername(query.username, endpoint: "user/recent-tracks")
 
         do {
             return try await RecentTracksResolver.resolve(
                 username: query.username,
-                limit: limit,
-                page: page,
+                limit: clampedLimit(query.limit, default: 5),
+                page: clampedPage(query.page),
                 db: req.db,
                 lastFM: req.application.lastFM,
                 logger: req.logger
@@ -96,5 +70,13 @@ struct UserController: RouteCollection {
             req.logger.info("user/recent-tracks: not found", metadata: ["username": .string(query.username)])
             throw Abort(.notFound)
         }
+    }
+
+    private func clampedLimit(_ limit: Int?, default defaultValue: Int, max maxValue: Int = 100) -> Int {
+        min(max(limit ?? defaultValue, 1), maxValue)
+    }
+
+    private func clampedPage(_ page: Int?) -> Int {
+        max(page ?? 1, 1)
     }
 }

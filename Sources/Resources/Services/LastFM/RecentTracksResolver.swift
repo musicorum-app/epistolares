@@ -35,9 +35,8 @@ enum RecentTracksResolver {
             items.append(dto)
         }
 
-        let overallMs = Double(DispatchTime.now().uptimeNanoseconds - overallStart.uptimeNanoseconds) / 1_000_000
         logger.info("resolved recent-tracks", metadata: [
-            "username": .string(username), "count": .stringConvertible(items.count), "ms": .stringConvertible(String(format: "%.1f", overallMs)),
+            "username": .string(username), "count": .stringConvertible(items.count), "ms": .stringConvertible(overallStart.elapsedMs),
         ])
 
         return RecentTracksResponseDTO(

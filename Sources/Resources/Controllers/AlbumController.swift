@@ -12,14 +12,7 @@ struct AlbumController: RouteCollection {
     func info(req: Request) async throws -> AlbumInfoResponseDTO {
         let query = try req.query.decode(AlbumInfoQuery.self)
 
-        if let username = query.username {
-            do {
-                try await req.application.lastFM.validateUsername(username)
-            } catch LastFMError.notFound {
-                req.logger.warning("album/info: invalid username", metadata: ["username": .string(username)])
-                throw Abort(.badRequest, reason: "Invalid Last.fm username")
-            }
-        }
+        try await req.validateLastFMUsername(query.username, endpoint: "album/info")
 
         let artistName: String
         let albumName: String
