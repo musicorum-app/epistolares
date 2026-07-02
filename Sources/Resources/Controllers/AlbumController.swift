@@ -1,0 +1,47 @@
+import Fluent
+import Vapor
+
+struct AlbumController: RouteCollection {
+    func boot(routes: any RoutesBuilder) throws {
+        routes.group("album") { group in
+            group.get("info", use: info)
+        }
+    }
+
+    @Sendable
+    func info(req: Request) async throws -> AlbumInfoResponseDTO {
+        let query = try req.query.decode(AlbumInfoQuery.self)
+
+        if let username = query.username {
+            do {
+                try await req.application.lastFM.validateUsername(username)
+            } catch LastFMError.notFound {
+                throw Abort(.badRequest, reason: "Invalid Last.fm username")
+            }
+        }
+
+        let artistName: String
+        let albumName: String
+        if let id = query.id {
+            guard let album = try await Album.find(id, on: req.db) else {
+                throw Abort(.notFound)
+            }
+            let artist = try await album.$artist.get(on: req.db)
+            artistName = artist.name
+            albumName = album.name
+        } else if let name = query.name, let artist = query.artist {
+            artistName = artist
+            albumName = name
+        } else {
+            throw Abort(.badRequest, reason: "Provide either id or name and artist")
+        }
+
+        do {
+            let syncedArtist = try await LastFMSync.syncArtist(name: artistName, username: query.username, db: req.db, lastFM: req.application.lastFM)
+            let result = try await LastFMSync.syncAlbum(name: albumName, artist: syncedArtist.artist, username: query.username, db: req.db, lastFM: req.application.lastFM)
+            return try await result.toDTO(db: req.db)
+        } catch LastFMError.notFound {
+            throw Abort(.notFound)
+        }
+    }
+}
