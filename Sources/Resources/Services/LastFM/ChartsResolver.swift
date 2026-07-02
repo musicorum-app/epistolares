@@ -73,7 +73,7 @@ enum ChartsResolver {
             id: entity.id ?? UUID(),
             name: entity.name,
             artist: artist,
-            coverURL: cover.toCoverURL(dimensions: .large)?.absoluteString,
+            cover: cover.toCoverDTO(),
             playcount: playcount ?? 0
         )
     }

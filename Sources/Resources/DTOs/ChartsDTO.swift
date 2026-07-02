@@ -35,7 +35,7 @@ struct ChartEntryDTO: Content, Sendable {
     var id: UUID
     var name: String
     var artist: String?
-    var coverURL: String?
+    var cover: CoverDTO?
     var playcount: Int
 }
 

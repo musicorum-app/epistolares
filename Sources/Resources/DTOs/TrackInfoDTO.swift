@@ -6,7 +6,7 @@ struct TrackInfoQuery: Content {
     var track: String
     var album: String?
     var artist: String
-    var username: String
+    var username: String?
 }
 
 struct UserScrobbleDTO: Content {
@@ -25,7 +25,7 @@ struct EntityInfoDTO: Content {
     var name: String
     var listeners: Int
     var scrobbles: Int
-    var coverURL: String?
+    var cover: CoverDTO?
     var tags: [String]
     var userScrobbles: UserScrobbleDTO?
     var tracks: [AlbumTrackDTO]?
@@ -52,7 +52,7 @@ extension TrackInfoResult {
             name: artist.name,
             listeners: artist.listeners,
             scrobbles: artist.scrobbles,
-            coverURL: artistCover.toCoverURL(dimensions: .large)?.absoluteString,
+            cover: artistCover.toCoverDTO(),
             tags: artistTags.map { $0.name },
             userScrobbles: artistScrobbles?.toDTO()
         )
@@ -71,7 +71,7 @@ extension TrackInfoResult {
                 name: album.name,
                 listeners: album.listeners,
                 scrobbles: album.scrobbles,
-                coverURL: albumCover.toCoverURL(dimensions: .large)?.absoluteString,
+                cover: albumCover.toCoverDTO(),
                 tags: albumTags.map { $0.name },
                 userScrobbles: albumScrobbles?.toDTO(),
                 tracks: albumTracks.map { AlbumTrackDTO(id: $0.id ?? UUID(), name: $0.name, rank: $0.rank) }
@@ -85,7 +85,7 @@ extension TrackInfoResult {
             name: track.name,
             listeners: track.listeners,
             scrobbles: track.scrobbles,
-            coverURL: trackCover.toCoverURL(dimensions: .large)?.absoluteString,
+            cover: trackCover.toCoverDTO(),
             tags: trackTags.map { $0.name },
             userScrobbles: trackScrobbles?.toDTO()
         )

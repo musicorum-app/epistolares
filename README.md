@@ -47,7 +47,10 @@ GET /track/info?track=When%20the%20Sun%20Hits&artist=Slowdive&username=blueslime
     "name": "Slowdive",
     "listeners": 2284425,
     "scrobbles": 152295425,
-    "coverURL": "https://lastfm.freetls.fastly.net/i/u/1000x1000/....jpg",
+    "cover": {
+      "defaultURL": "https://lastfm.freetls.fastly.net/i/u/300x300/....jpg",
+      "template": "https://lastfm.freetls.fastly.net/i/u/{w}x{h}/....jpg"
+    },
     "tags": ["dream pop", "shoegaze", "indie", "ambient", "indie rock"],
     "userScrobbles": { "playCount": 4 }
   },
@@ -56,7 +59,7 @@ GET /track/info?track=When%20the%20Sun%20Hits&artist=Slowdive&username=blueslime
     "name": "Souvlaki",
     "listeners": 1959397,
     "scrobbles": 94821286,
-    "coverURL": "...",
+    "cover": { "defaultURL": "...", "template": "..." },
     "tags": ["dream pop", "shoegaze", "90s", "indie", "dreamy"],
     "tracks": [
       { "id": "...", "name": "Alison", "rank": 1 },
@@ -69,7 +72,7 @@ GET /track/info?track=When%20the%20Sun%20Hits&artist=Slowdive&username=blueslime
     "name": "When the Sun Hits",
     "listeners": 1593978,
     "scrobbles": 27748509,
-    "coverURL": "...",
+    "cover": { "defaultURL": "...", "template": "..." },
     "tags": ["dream pop", "shoegaze", "90s"],
     "userScrobbles": { "playCount": 4, "loved": false }
   }
@@ -89,7 +92,7 @@ GET /artist/info?name=Kelela&username=blueslimee
   "aliases": [],
   "listeners": 648122,
   "scrobbles": 39692947,
-  "coverURL": "...",
+  "cover": { "defaultURL": "...", "template": "..." },
   "tags": ["electronic", "rnb", "ambient", "trip-hop", "House"],
   "bio": {
     "summary": "Kelela Mizanekristos is an American singer...",
@@ -97,8 +100,8 @@ GET /artist/info?name=Kelela&username=blueslimee
     "license": "User-contributed text is available under the Creative Commons By-SA License; additional terms may apply."
   },
   "similarArtists": [
-    { "id": "...", "name": "Rochelle Jordan", "coverURL": "..." },
-    { "id": "...", "name": "FKA twigs", "coverURL": "..." }
+    { "id": "...", "name": "Rochelle Jordan", "cover": { "defaultURL": "...", "template": "..." } },
+    { "id": "...", "name": "FKA twigs", "cover": { "defaultURL": "...", "template": "..." } }
   ],
   "userScrobbles": { "playCount": 909 }
 }
@@ -122,7 +125,7 @@ services:
       - "8080:8080"
     depends_on:
       - postgres
-    command: migrate --yes && serve --env production --hostname 0.0.0.0 --port 8080
+    command: sh -c "migrate --yes && serve --env production --hostname 0.0.0.0 --port 8080"
   postgres:
     image: postgres:18
     environment:
