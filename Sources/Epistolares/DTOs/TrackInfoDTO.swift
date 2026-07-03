@@ -3,9 +3,10 @@ import Foundation
 import Vapor
 
 struct TrackInfoQuery: Content {
-    var track: String
+    var id: UUID?
+    var track: String?
     var album: String?
-    var artist: String
+    var artist: String?
     var username: String?
 }
 
