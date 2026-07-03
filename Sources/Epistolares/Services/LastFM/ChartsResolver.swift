@@ -29,27 +29,42 @@ enum ChartsResolver {
         case .artist:
             let chart = try await lastFM.topArtists(username: username, period: period.rawValue, limit: limit, page: page)
             attr = chart.attr
-            items = try await mapConcurrently(chart.artist ?? []) { entry in
-                let synced = try await LastFMSync.syncArtist(name: entry.name, username: username, db: db, lastFM: lastFM, syncSimilar: false)
-                return try await entryDTO(artist: nil, playCount: entry.playcount?.value, entity: synced.artist, db: db)
-            }
+            items = try await mapConcurrently(chart.artist ?? []) { entry -> ChartEntryDTO? in
+                do {
+                    let synced = try await LastFMSync.syncArtist(name: entry.name, username: username, db: db, lastFM: lastFM, syncSimilar: false)
+                    return try await entryDTO(artist: nil, playCount: entry.playcount?.value, entity: synced.artist, db: db)
+                } catch LastFMError.notFound {
+                    logger.info("charts: skipping unresolvable artist entry", metadata: ["name": .string(entry.name)])
+                    return nil
+                }
+            }.compactMap { $0 }
 
         case .album:
             let chart = try await lastFM.topAlbums(username: username, period: period.rawValue, limit: limit, page: page)
             attr = chart.attr
-            items = try await mapConcurrently(chart.album ?? []) { entry in
-                let syncedArtist = try await LastFMSync.syncArtist(name: entry.artist.name, username: username, db: db, lastFM: lastFM, syncSimilar: false)
-                let syncedAlbum = try await LastFMSync.syncAlbum(name: entry.name, artist: syncedArtist.artist, username: username, db: db, lastFM: lastFM)
-                return try await entryDTO(artist: syncedArtist.artist.name, playCount: entry.playcount?.value, entity: syncedAlbum.album, db: db)
-            }
+            items = try await mapConcurrently(chart.album ?? []) { entry -> ChartEntryDTO? in
+                do {
+                    let syncedArtist = try await LastFMSync.syncArtist(name: entry.artist.name, username: username, db: db, lastFM: lastFM, syncSimilar: false)
+                    let syncedAlbum = try await LastFMSync.syncAlbum(name: entry.name, artist: syncedArtist.artist, username: username, db: db, lastFM: lastFM)
+                    return try await entryDTO(artist: syncedArtist.artist.name, playCount: entry.playcount?.value, entity: syncedAlbum.album, db: db)
+                } catch LastFMError.notFound {
+                    logger.info("charts: skipping unresolvable album entry", metadata: ["name": .string(entry.name), "artist": .string(entry.artist.name)])
+                    return nil
+                }
+            }.compactMap { $0 }
 
         case .track:
             let chart = try await lastFM.topTracks(username: username, period: period.rawValue, limit: limit, page: page)
             attr = chart.attr
-            items = try await mapConcurrently(chart.track ?? []) { entry in
-                let result = try await TrackInfoResolver.resolve(track: entry.name, album: nil, artist: entry.artist.name, username: username, db: db, lastFM: lastFM)
-                return try await entryDTO(artist: result.artist.name, playCount: entry.playcount?.value, entity: result.track, db: db)
-            }
+            items = try await mapConcurrently(chart.track ?? []) { entry -> ChartEntryDTO? in
+                do {
+                    let result = try await TrackInfoResolver.resolve(track: entry.name, album: nil, artist: entry.artist.name, username: username, db: db, lastFM: lastFM)
+                    return try await entryDTO(artist: result.artist.name, playCount: entry.playcount?.value, entity: result.track, db: db)
+                } catch LastFMError.notFound {
+                    logger.info("charts: skipping unresolvable track entry", metadata: ["name": .string(entry.name), "artist": .string(entry.artist.name)])
+                    return nil
+                }
+            }.compactMap { $0 }
         }
 
         // Guarantee "ordered by playCount" regardless of what order Last.fm happened to send.
