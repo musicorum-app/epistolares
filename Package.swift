@@ -33,6 +33,9 @@ let package = Package(
                 .product(name: "FluentSQL", package: "fluent-kit"),
                 .product(name: "VaporToOpenAPI", package: "VaporToOpenAPI")
             ],
+            resources: [
+                .copy("Resources/banner.txt")
+            ],
             swiftSettings: swiftSettings
         ),
         .testTarget(
