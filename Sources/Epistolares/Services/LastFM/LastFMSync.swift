@@ -1,4 +1,5 @@
 import Fluent
+import FluentSQL
 import Foundation
 import Vapor
 
@@ -248,13 +249,22 @@ enum LastFMSync {
     }
 
     // TODO: syncTags and syncArtists: detach old artist and tags
-    // TODO: swap for `aliases @> ARRAY[...]` filter ?
     static func findArtistByNameOrAlias(_ name: String, db: any Database) async throws -> Artist? {
         if let exact = try await Artist.query(on: db).filter(\.$name == name).first() {
             return exact
         }
-        let all = try await Artist.query(on: db).all()
-        return all.first { $0.aliases.contains { $0.lowercased() == name.lowercased() } }
+        guard let sql = db as? any SQLDatabase else {
+            let all = try await Artist.query(on: db).all()
+            return all.first { $0.aliases.contains { $0.lowercased() == name.lowercased() } }
+        }
+        struct IDRow: Decodable { let id: UUID }
+        let match = try await sql.raw("""
+            SELECT id FROM artists
+            WHERE EXISTS (SELECT 1 FROM unnest(aliases) AS alias WHERE lower(alias) = lower(\(bind: name)))
+            LIMIT 1
+            """).first(decoding: IDRow.self)
+        guard let match else { return nil }
+        return try await Artist.find(match.id, on: db)
     }
 
     /// Attaches any similar artists Last.fm reports that aren't already attached.
@@ -398,13 +408,14 @@ enum LastFMSync {
 
         let albumID = try album.requireID()
 
-        // TODO: i dont think we need to fetch every track in the album?
         if let tracks = info.tracks?.track {
+            let existingByName = try await Track.query(on: db)
+                .filter(\.$album.$id == albumID)
+                .all()
+                .reduce(into: [String: Track]()) { $0[$1.name] = $1 }
+
             for entry in tracks {
-                let existingTrack = try await Track.query(on: db)
-                    .filter(\.$name == entry.name)
-                    .filter(\.$album.$id == albumID)
-                    .first()
+                let existingTrack = existingByName[entry.name]
                 let rank = entry.attr?.rank?.value ?? 0
                 if let existingTrack {
                     if existingTrack.rank != rank {
