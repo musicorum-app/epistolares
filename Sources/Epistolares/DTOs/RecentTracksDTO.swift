@@ -87,3 +87,39 @@ extension TrackInfoResult {
         return RecentTrackDTO(track: trackDTO, album: albumDTO, artist: artistDTO, nowPlaying: nowPlaying, playedAt: playedAt)
     }
 }
+
+extension RecentTrackDTO {
+    static func unresolved(trackName: String, albumName: String?, artistName: String, cover: CoverDTO?, nowPlaying: Bool, playedAt: Date?) -> RecentTrackDTO {
+        let trackDTO = RecentTrackEntityDTO(
+            id: UUID(),
+            name: trackName,
+            listeners: 0,
+            scrobbles: 0,
+            cover: cover,
+            tags: [],
+            userScrobbles: TrackScrobbleDTO(playCount: 0, loved: false)
+        )
+
+        let artistDTO = RecentEntityRefDTO(
+            id: UUID(),
+            name: artistName,
+            listeners: 0,
+            scrobbles: 0,
+            cover: nil,
+            userScrobbles: UserScrobbleDTO(playCount: 0)
+        )
+
+        let albumDTO = albumName.map {
+            RecentEntityRefDTO(
+                id: UUID(),
+                name: $0,
+                listeners: 0,
+                scrobbles: 0,
+                cover: nil,
+                userScrobbles: UserScrobbleDTO(playCount: 0)
+            )
+        }
+
+        return RecentTrackDTO(track: trackDTO, album: albumDTO, artist: artistDTO, nowPlaying: nowPlaying, playedAt: playedAt)
+    }
+}

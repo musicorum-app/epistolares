@@ -17,4 +17,12 @@ extension Cover {
             )
         }
     }
+
+    static func toCoverDTO(externalID: String?) -> CoverDTO? {
+        guard let externalID, !externalID.isEmpty else { return nil }
+        return CoverDTO(
+            defaultURL: "https://lastfm.freetls.fastly.net/i/u/300x300/\(externalID).jpg",
+            template: "https://lastfm.freetls.fastly.net/i/u/{w}x{h}/\(externalID).jpg"
+        )
+    }
 }

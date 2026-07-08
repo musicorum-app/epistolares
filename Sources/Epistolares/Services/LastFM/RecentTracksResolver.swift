@@ -17,20 +17,31 @@ enum RecentTracksResolver {
         let items = try await mapConcurrently(recent.track ?? []) { entry in
             let albumName = entry.album?.text.isEmpty == false ? entry.album?.text : nil
             let nowPlaying = entry.attr?.nowplaying == "true"
+            let playedAt = entry.date?.uts.value.map { Date(timeIntervalSince1970: TimeInterval($0)) }
 
-            let result = try await TrackInfoResolver.resolve(
-                track: entry.name,
-                album: albumName,
-                artist: entry.artist.text,
-                username: username,
-                db: db,
-                lastFM: lastFM
-            )
-            return try await result.toRecentTrackDTO(
-                db: db,
-                nowPlaying: nowPlaying,
-                playedAt: entry.date?.uts.value.map { Date(timeIntervalSince1970: TimeInterval($0)) }
-            )
+            do {
+                let result = try await TrackInfoResolver.resolve(
+                    track: entry.name,
+                    album: albumName,
+                    artist: entry.artist.text,
+                    username: username,
+                    db: db,
+                    lastFM: lastFM
+                )
+                return try await result.toRecentTrackDTO(db: db, nowPlaying: nowPlaying, playedAt: playedAt)
+            } catch LastFMError.notFound {
+                logger.info("recent-tracks: entry unresolvable, returning raw scrobble data", metadata: [
+                    "track": .string(entry.name), "artist": .string(entry.artist.text),
+                ])
+                return RecentTrackDTO.unresolved(
+                    trackName: entry.name,
+                    albumName: albumName,
+                    artistName: entry.artist.text,
+                    cover: Cover.toCoverDTO(externalID: LastFMSync.coverExternalID(from: entry.image)),
+                    nowPlaying: nowPlaying,
+                    playedAt: playedAt
+                )
+            }
         }
 
         logger.info("resolved recent-tracks", metadata: [

@@ -376,9 +376,10 @@ struct LFMRecentTracks: Decodable {
         let album: TextRef?
         let date: DateRef?
         let attr: Attr?
+        let image: [LFMImage]?
 
         enum CodingKeys: String, CodingKey {
-            case name, url, artist, album, date
+            case name, url, artist, album, date, image
             case attr = "@attr"
         }
     }
