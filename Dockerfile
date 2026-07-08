@@ -22,15 +22,26 @@ COPY ./Package.* ./
 RUN swift package resolve \
         $([ -f ./Package.resolved ] && echo "--force-resolved-versions" || true)
 
-# Copy entire repo into container
+RUN mkdir -p Sources/Epistolares/Resources Tests/EpistolaresTests \
+    && touch Sources/Epistolares/Resources/banner.txt Tests/EpistolaresTests/Stub.swift \
+    && printf '@main struct Stub { static func main() {} }\n' > Sources/Epistolares/entrypoint.swift \
+    && swift build -c release \
+        --product Epistolares \
+        --static-swift-stdlib \
+        -Xlinker -ljemalloc \
+    && rm -rf Sources/Epistolares/entrypoint.swift Sources/Epistolares/Resources/banner.txt Tests
+
+# Copy entire repo into container (.build is excluded via .dockerignore, so the
+# dependency build above is preserved).
 COPY . .
 
 RUN mkdir /staging
 
-# Build the application, with optimizations, with static linking, and using jemalloc
+# Build the application, with optimizations, with static linking, and using jemalloc.
 # N.B.: The static version of jemalloc is incompatible with the static Swift runtime.
-RUN --mount=type=cache,target=/build/.build \
-    swift build -c release \
+# N.B.: No `--mount=type=cache` here on purpose -- it would shadow the .build directory
+# baked into the layer above, defeating the pre-build step.
+RUN swift build -c release \
         --product Epistolares \
         --static-swift-stdlib \
         -Xlinker -ljemalloc && \

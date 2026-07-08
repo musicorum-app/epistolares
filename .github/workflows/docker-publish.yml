@@ -90,3 +90,10 @@ jobs:
         # This step uses the identity token to provision an ephemeral certificate
         # against the sigstore community Fulcio instance.
         run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+
+      # Trigger a redeploy on pushes to main
+      - name: Trigger deploy webhook
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: curl --fail --silent --show-error --request POST "${DEPLOY_WEBHOOK_URL}"
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
