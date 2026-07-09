@@ -65,7 +65,7 @@ extension UserScrobbles {
 }
 
 extension TrackInfoResult {
-    func toDTO(db: any Database) async throws -> TrackInfoResponseDTO {
+    func toDTO(displayName: String, db: any Database) async throws -> TrackInfoResponseDTO {
         let artistCover = try await artist.$cover.get(reload: true, on: db)
         let artistTags = try await artist.$tags.get(reload: true, on: db)
         let artistDTO = EntityInfoDTO(
@@ -103,7 +103,7 @@ extension TrackInfoResult {
         let trackTags = track.id != nil ? try await track.$tags.get(reload: true, on: db) : []
         let trackDTO = TrackEntityInfoDTO(
             id: track.id ?? UUID(),
-            name: track.name,
+            name: displayName,
             listeners: track.listeners,
             scrobbles: track.scrobbles,
             cover: trackCover.toCoverDTO(),

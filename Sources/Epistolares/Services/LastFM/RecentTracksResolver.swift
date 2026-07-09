@@ -13,6 +13,8 @@ enum RecentTracksResolver {
     ) async throws -> RecentTracksResponseDTO {
         let overallStart = ContinuousClock.now
         let recent = try await lastFM.recentTracks(username: username, limit: limit, page: page)
+        // small enough for cache to be bypassed
+        let bypassScrobbleCache = limit <= 2
 
         let items = try await mapConcurrently(recent.track ?? []) { entry in
             let albumName = entry.album?.text.isEmpty == false ? entry.album?.text : nil
@@ -26,9 +28,10 @@ enum RecentTracksResolver {
                     artist: entry.artist.text,
                     username: username,
                     db: db,
-                    lastFM: lastFM
+                    lastFM: lastFM,
+                    bypassScrobbleCache: bypassScrobbleCache
                 )
-                return try await result.toRecentTrackDTO(db: db, nowPlaying: nowPlaying, playedAt: playedAt)
+                return try await result.toRecentTrackDTO(scrobbledName: entry.name, db: db, nowPlaying: nowPlaying, playedAt: playedAt)
             } catch LastFMError.notFound {
                 logger.info("recent-tracks: entry unresolvable, returning raw scrobble data", metadata: [
                     "track": .string(entry.name), "artist": .string(entry.artist.text),

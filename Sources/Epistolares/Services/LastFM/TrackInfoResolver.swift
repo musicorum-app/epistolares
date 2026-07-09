@@ -19,7 +19,8 @@ enum TrackInfoResolver {
         artist: String,
         username: String?,
         db: any Database,
-        lastFM: any LastFMClientProtocol
+        lastFM: any LastFMClientProtocol,
+        bypassScrobbleCache: Bool = false
     ) async throws -> TrackInfoResult {
         let albumWasExplicit = album != nil
         let cleanTrack = LastFMNameCleaner.cleanTrackName(track)
@@ -62,18 +63,22 @@ enum TrackInfoResolver {
                 let prefixed = tracks.filter { LastFMNameCleaner.cleanTrackName($0.name).lowercased().hasPrefix(cleanTrackLower) }
                 if prefixed.count == 1 {
                     matchedTrackName = prefixed[0].name
+                } else {
+                    matchedTrackName = track
                 }
             }
         }
 
         let syncedTrack = try await LastFMSync.syncTrack(
             name: matchedTrackName,
+            scrobbleName: track,
             artist: syncedArtist.artist,
             album: syncedAlbum?.album,
             username: username,
             db: db,
             lastFM: lastFM,
-            persistAlbumAssociation: albumWasExplicit
+            persistAlbumAssociation: albumWasExplicit,
+            bypassScrobbleCache: bypassScrobbleCache
         )
 
         return TrackInfoResult(

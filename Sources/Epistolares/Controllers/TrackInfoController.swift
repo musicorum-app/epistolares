@@ -44,7 +44,7 @@ struct TrackInfoController: RouteCollection {
                 db: req.db,
                 lastFM: req.application.lastFM
             )
-            return try await result.toDTO(db: req.db)
+            return try await result.toDTO(displayName: trackName, db: req.db)
         } catch LastFMError.notFound {
             req.logger.info("track/info: not found", metadata: ["track": .string(trackName), "artist": .string(artistName), "album": .string(albumName ?? "nil")])
             throw Abort(.notFound)

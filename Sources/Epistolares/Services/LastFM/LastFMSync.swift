@@ -122,6 +122,7 @@ enum LastFMSync {
         _ existing: Entity?,
         username: String?,
         trackScrobbles: Bool = true,
+        bypassScrobbleCache: Bool = false,
         target: (Entity) throws -> ScrobbleTarget,
         db: any Database
     ) async throws -> FreshnessCheck<Entity> {
@@ -132,10 +133,10 @@ enum LastFMSync {
         if let username, trackScrobbles {
             scrobbles = try await findUserScrobbles(username: username, target: try target(existing), db: db)
         }
-        if username == nil || !trackScrobbles || !isStale(scrobbles?.updatedAt, ttl: scrobbleTTL) {
+        if username == nil || !trackScrobbles || (!bypassScrobbleCache && !isStale(scrobbles?.updatedAt, ttl: scrobbleTTL)) {
             return .hit(existing, scrobbles)
         }
-        return .miss(reason: "scrobbles stale")
+        return .miss(reason: bypassScrobbleCache ? "scrobble cache bypassed" : "scrobbles stale")
     }
 
     private static func fetchCanonicalAndUser<Info>(
@@ -439,7 +440,8 @@ enum LastFMSync {
 
     /// - Parameter persistAlbumAssociation: When `false`, `album` was a best-effort guess (discovered,
     ///   not supplied by the caller, etc) and will not be written as the track's album.
-    static func syncTrack(name: String, artist: Artist, album: Album?, username: String?, db: any Database, lastFM: any LastFMClientProtocol, persistAlbumAssociation: Bool = true) async throws -> SyncedTrack {
+    static func syncTrack(name: String, scrobbleName: String? = nil, artist: Artist, album: Album?, username: String?, db: any Database, lastFM: any LastFMClientProtocol, persistAlbumAssociation: Bool = true, bypassScrobbleCache: Bool = false) async throws -> SyncedTrack {
+        let scrobbleName = scrobbleName ?? name
         let artistID = try artist.requireID()
 
         var existing: Track?
@@ -450,7 +452,7 @@ enum LastFMSync {
             existing = try await Track.query(on: db).filter(\.$name == name).filter(\.$artist.$id == artistID).first()
         }
 
-        switch try await checkFreshness(existing, username: username, target: { .track(try $0.requireID()) }, db: db) {
+        switch try await checkFreshness(existing, username: username, bypassScrobbleCache: bypassScrobbleCache, target: { .track(try $0.requireID()) }, db: db) {
         case .hit(let track, let scrobbles):
             logger.debug("syncTrack cache hit", metadata: ["name": .string(name)])
             return SyncedTrack(track: track, scrobbles: scrobbles)
@@ -458,9 +460,13 @@ enum LastFMSync {
             logger.debug("syncTrack cache miss: \(reason)", metadata: ["name": .string(name)])
         }
 
-        let (info, userInfo) = try await fetchCanonicalAndUser(username: username) { username in
-            try await lastFM.trackInfo(name: name, artist: artist.name, username: username)
-        }
+        async let canonicalInfo = lastFM.trackInfo(name: name, artist: artist.name, username: serviceUsername)
+        async let userInfoTask: LFMTrack? = {
+            guard let username, username != serviceUsername else { return nil }
+            return try await lastFM.trackInfo(name: scrobbleName, artist: artist.name, username: username)
+        }()
+        let info = try await canonicalInfo
+        let userInfo = try await userInfoTask
         let canCreateOrAssociate = album != nil && persistAlbumAssociation
 
         guard existing != nil || canCreateOrAssociate else {

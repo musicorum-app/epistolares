@@ -48,12 +48,12 @@ struct RecentTracksResponseDTO: Content {
 }
 
 extension TrackInfoResult {
-    func toRecentTrackDTO(db: any Database, nowPlaying: Bool, playedAt: Date?) async throws -> RecentTrackDTO {
+    func toRecentTrackDTO(scrobbledName: String, db: any Database, nowPlaying: Bool, playedAt: Date?) async throws -> RecentTrackDTO {
         let trackCover = try await track.$cover.get(reload: true, on: db)
         let trackTags = track.id != nil ? try await track.$tags.get(reload: true, on: db) : []
         let trackDTO = RecentTrackEntityDTO(
             id: track.id ?? UUID(),
-            name: track.name,
+            name: scrobbledName,
             listeners: track.listeners,
             scrobbles: track.scrobbles,
             cover: trackCover.toCoverDTO(),
