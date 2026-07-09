@@ -58,8 +58,11 @@ enum TrackInfoResolver {
 
             if let exact = tracks.first(where: { LastFMNameCleaner.cleanTrackName($0.name).lowercased() == cleanTrackLower }) {
                 matchedTrackName = exact.name
-            } else if let prefixed = tracks.first(where: { LastFMNameCleaner.cleanTrackName($0.name).lowercased().hasPrefix(cleanTrackLower) }) {
-                matchedTrackName = prefixed.name
+            } else {
+                let prefixed = tracks.filter { LastFMNameCleaner.cleanTrackName($0.name).lowercased().hasPrefix(cleanTrackLower) }
+                if prefixed.count == 1 {
+                    matchedTrackName = prefixed[0].name
+                }
             }
         }
 
