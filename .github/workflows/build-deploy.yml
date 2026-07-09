@@ -1,6 +1,7 @@
 name: Build and deploy
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -10,6 +11,6 @@ permissions:
   packages: write
 
 jobs:
-  call-dokploy-template:
+  deploy:
     uses: musicorum-app/gh-actions/.github/workflows/dokploy-deploy.yml@main
     secrets: inherit
