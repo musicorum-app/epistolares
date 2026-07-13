@@ -1,3 +1,4 @@
+import Crypto
 import Foundation
 import NIOFoundationCompat
 import Vapor
@@ -12,6 +13,7 @@ protocol LastFMClientProtocol: Sendable {
     func topAlbums(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopAlbums
     func topTracks(username: String, period: String, limit: Int, page: Int) async throws -> LFMTopTracks
     func recentTracks(username: String, limit: Int, page: Int) async throws -> LFMRecentTracks
+    func verifySession(sessionKey: String) async throws -> String
 }
 
 struct LastFMClient: LastFMClientProtocol, Sendable {
@@ -20,6 +22,7 @@ struct LastFMClient: LastFMClientProtocol, Sendable {
 
     let client: any Client
     let apiKey: String
+    let apiSecret: String
 
     private func call<T: Decodable>(method: String, params: [String: String], as type: T.Type) async throws -> T {
         var query = params
@@ -40,10 +43,20 @@ struct LastFMClient: LastFMClientProtocol, Sendable {
         let data = Data(buffer: body)
 
         if let error = try? JSONDecoder().decode(LFMErrorResponse.self, from: data) {
-            throw error.error == 6 ? LastFMError.notFound : LastFMError.apiError(code: error.error, message: error.message)
+            switch error.error {
+            case 6: throw LastFMError.notFound
+            case 4, 9: throw LastFMError.unauthorized // auth failed / invalid session key
+            default: throw LastFMError.apiError(code: error.error, message: error.message)
+            }
         }
 
         return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    private func sign(_ params: [String: String]) -> String {
+        let concatenated = params.sorted { $0.key < $1.key }.map { $0.key + $0.value }.joined()
+        let digest = Insecure.MD5.hash(data: Data((concatenated + apiSecret).utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     func artistInfo(name: String, username: String?) async throws -> LFMArtist {
@@ -87,6 +100,12 @@ struct LastFMClient: LastFMClientProtocol, Sendable {
     func recentTracks(username: String, limit: Int, page: Int) async throws -> LFMRecentTracks {
         let params = ["user": username, "limit": "\(limit)", "page": "\(page)"]
         return try await call(method: "user.getrecenttracks", params: params, as: LFMRecentTracksResponse.self).recenttracks
+    }
+
+    func verifySession(sessionKey: String) async throws -> String {
+        let signature = sign(["method": "user.getInfo", "api_key": apiKey, "sk": sessionKey])
+        let response = try await call(method: "user.getInfo", params: ["sk": sessionKey, "api_sig": signature], as: LFMUserInfoResponse.self)
+        return response.user.name
     }
 }
 

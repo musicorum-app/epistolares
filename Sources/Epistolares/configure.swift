@@ -28,7 +28,12 @@ func configure(_ app: Application) async throws {
     if apiKey.isEmpty {
         fatalError("Missing LASTFM_API_KEY")
     }
-    app.lastFM = LastFMClient(client: app.client, apiKey: apiKey)
+    let apiSecret = Environment.get("LASTFM_API_SECRET") ?? ""
+    if apiSecret.isEmpty {
+        fatalError("Missing LASTFM_API_SECRET")
+    }
+    app.lastFM = LastFMClient(client: app.client, apiKey: apiKey, apiSecret: apiSecret)
+    app.presence = PresenceStore()
     app.logger.info("Using Last.fm service account", metadata: ["username": .string(LastFMSync.serviceUsername)])
 
     app.migrations.add(CreateCover())
@@ -41,6 +46,7 @@ func configure(_ app: Application) async throws {
     app.migrations.add(CreateTrackTag())
     app.migrations.add(CreateSimilarArtists())
     app.migrations.add(CreateUserScrobbles())
+    app.migrations.add(CreateUserPresenceKey())
 
     // register routes
     try routes(app)

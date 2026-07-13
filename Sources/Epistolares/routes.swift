@@ -11,6 +11,7 @@ func routes(_ app: Application) throws {
     try app.register(collection: ArtistController())
     try app.register(collection: AlbumController())
     try app.register(collection: UserController())
+    try app.register(collection: PresenceController())
 
     app.get("Swagger", "swagger.json") { req in
         req.application.routes.openAPI(

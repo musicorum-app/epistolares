@@ -4,6 +4,7 @@ enum LastFMError: Error {
     case notFound
     case apiError(code: Int, message: String)
     case invalidResponse
+    case unauthorized
 }
 
 struct LFMErrorResponse: Decodable {

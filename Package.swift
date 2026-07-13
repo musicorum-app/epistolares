@@ -17,6 +17,7 @@ let package = Package(
         .package(url: "https://github.com/vapor/fluent-kit.git", from: "1.52.2"),
         // 🔵 Non-blocking, event-driven networking for Swift. Used for custom executors
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.101.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
         .package(url: "https://github.com/dankinsoid/VaporToOpenAPI.git", from: "4.9.2"),
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.0")
     ],
@@ -30,6 +31,7 @@ let package = Package(
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOFoundationCompat", package: "swift-nio"),
+                .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "FluentSQL", package: "fluent-kit"),
                 .product(name: "VaporToOpenAPI", package: "VaporToOpenAPI")
             ],

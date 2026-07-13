@@ -1,5 +1,5 @@
 import Foundation
-@testable import Resources
+@testable import Epistolares
 
 actor MockLastFMClient: LastFMClientProtocol {
     private var artists: [String: LFMArtist] = [:]
@@ -10,8 +10,13 @@ actor MockLastFMClient: LastFMClientProtocol {
     private var topAlbumsCharts: [String: LFMTopAlbums] = [:]
     private var topTracksCharts: [String: LFMTopTracks] = [:]
     private var recentTracksLists: [String: LFMRecentTracks] = [:]
+    private var sessions: [String: String] = [:]
 
     private(set) var calls: [String] = []
+
+    func setSession(_ sessionKey: String, username: String) {
+        sessions[sessionKey] = username
+    }
 
     func setArtist(_ artist: LFMArtist, forName name: String) {
         artists[name.lowercased()] = artist
@@ -90,6 +95,12 @@ actor MockLastFMClient: LastFMClientProtocol {
         calls.append("recentTracks(\(username), limit: \(limit), page: \(page))")
         guard let list = recentTracksLists["\(username.lowercased())|\(limit)|\(page)"] else { throw LastFMError.notFound }
         return list
+    }
+
+    func verifySession(sessionKey: String) async throws -> String {
+        calls.append("verifySession(\(sessionKey))")
+        guard let username = sessions[sessionKey] else { throw LastFMError.unauthorized }
+        return username
     }
 }
 

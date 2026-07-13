@@ -1,4 +1,4 @@
-@testable import Resources
+@testable import Epistolares
 import VaporTesting
 import Fluent
 
